@@ -91,9 +91,9 @@ export function freshState(): GameState {
     players,
     towns: towns.map((t) => ({ id: t.id, ownerId: owned.get(t.id) ?? null })),
     ships: [
-      { id: "ship-raven", name: "Raven of Nash", faction: "viking", art: "items/raven-of-nash.svg", progress: 0.18, dir: 1, ownerId: null, raid: null },
-      { id: "ship-wolf", name: "Wolf-Prowed Drakkar", faction: "viking", art: "items/wolf-prowed-drakkar.svg", progress: 0.46, dir: 1, ownerId: null, raid: null },
-      { id: "ship-hulk", name: "Gorgrath's War Hulk", faction: "grog", art: "items/gorgrath-war-hulk.svg", progress: 0.72, dir: -1, ownerId: null, raid: null },
+      { id: "ship-raven", name: "Raven of Nash", faction: "viking", art: "items/raven-of-nash.jpg", progress: 0.18, dir: 1, ownerId: null, raid: null },
+      { id: "ship-wolf", name: "Wolf-Prowed Drakkar", faction: "viking", art: "items/wolf-prowed-drakkar.jpg", progress: 0.46, dir: 1, ownerId: null, raid: null },
+      { id: "ship-hulk", name: "Gorgrath's War Hulk", faction: "grog", art: "items/gorgrath-war-hulk.jpg", progress: 0.72, dir: -1, ownerId: null, raid: null },
     ],
     saga: [
       line(now, "The Seaway is awake. Jarl Harald holds Winchester. Bogra Gutlash holds Morrisburg."),
@@ -656,7 +656,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       side.attack = p.ai.attack * (1 + p.forge * 0.04)
       side.defense = p.ai.defense + walls * 22
       side.hp = side.maxHp = p.ai.hp + (mode === "home" ? p.hall * 30 : 0)
-      side.champs = [{ id: p.id, name: p.name, art: p.faction === "grog" ? "banner-grog.svg" : "banner-viking.svg", hp: side.hp, maxHp: side.maxHp, cry: "" }]
+      side.champs = [{ id: p.id, name: p.name, art: p.faction === "grog" ? "scenes/orc-brute.webp" : "scenes/wolves.jpg", hp: side.hp, maxHp: side.maxHp, cry: "" }]
       return side
     }
     for (const owned of marching) {
@@ -679,7 +679,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       side.attack = 36
       side.defense = 24
       side.hp = side.maxHp = 90
-      side.champs = [{ id: "levy", name: "Hall levy", art: "militia.svg", hp: 90, maxHp: 90, cry: "" }]
+      side.champs = [{ id: "levy", name: "Hall levy", art: p.faction === "grog" ? "scenes/orc-horned.webp" : "scenes/wolves.jpg", hp: 90, maxHp: 90, cry: "" }]
     }
     side.attack *= 1 + p.forge * 0.04
     if (p.buff) {
@@ -710,7 +710,8 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     side.attack = power.attack * town.threat
     side.defense = power.defense * town.threat
     side.hp = side.maxHp = power.hp * town.threat
-    side.champs = [{ id: `militia-${town.id}`, name: `${town.name} militia`, art: "militia.svg", hp: side.maxHp, maxHp: side.maxHp, cry: "" }]
+    const militiaArt = championById(town.guardianId ?? "")?.faction === "grog" ? "scenes/orc-forest.jpg" : "scenes/wolves.jpg"
+    side.champs = [{ id: `militia-${town.id}`, name: `${town.name} militia`, art: militiaArt, hp: side.maxHp, maxHp: side.maxHp, cry: "" }]
     if (town.guardianId && !championHolder(town.guardianId)) {
       const guard = championById(town.guardianId)
       if (guard && guard.faction !== attackerFaction) {
@@ -844,7 +845,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
           ...c,
           name: def?.name ?? c.id,
           title: def?.title ?? "",
-          art: def?.art ?? "militia.svg",
+          art: def?.art ?? "scenes/wolves.jpg",
           ability: def?.ability ?? "",
           abilityText: def?.abilityText ?? "",
           attack: Math.round((def?.attack ?? 0) * (1 + (c.level - 1) * 0.07) + (weapon?.attack ?? 0)),
@@ -1163,8 +1164,8 @@ function damageBuilding(p: Player) {
 }
 
 function shipArt(p: Player): string {
-  if (p.shipId) return itemById(p.shipId)?.art ?? "items/wolf-prowed-drakkar.svg"
-  return p.faction === "grog" ? "items/gorgrath-war-hulk.svg" : "items/raven-of-nash.svg"
+  if (p.shipId) return itemById(p.shipId)?.art ?? "items/wolf-prowed-drakkar.jpg"
+  return p.faction === "grog" ? "items/gorgrath-war-hulk.jpg" : "items/raven-of-nash.jpg"
 }
 
 function pack(sku: string) {

@@ -153,7 +153,7 @@ export function WarMap({
       const sig = `${p.faction}:${p.villageName}:${p.leaderArt ?? ""}:${p.hall}`
       const html = ai
         ? `<div class="rival-mark ${p.faction}" data-sig="${sig}"><div class="badge">${p.faction === "grog" ? "G" : "V"}</div><div class="label">${escapeHtml(p.name)}</div></div>`
-        : `<div class="hall-mark" data-sig="${sig}"><img alt="" src="${asset(p.leaderArt || (p.faction === "grog" ? "banner-grog.svg" : "banner-viking.svg"))}" /><div class="label">${escapeHtml(p.villageName)}</div></div>`
+        : `<div class="hall-mark" data-sig="${sig}"><img alt="" src="${asset(p.leaderArt || (p.faction === "grog" ? "scenes/orc-brute.webp" : "scenes/wolves.jpg"))}" /><div class="label">${escapeHtml(p.villageName)}</div></div>`
       const node = nodeOf(html)
       node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onHall(p.id) })
       put(`hall:${p.id}`, p.homeLng, p.homeLat, node, "bottom")

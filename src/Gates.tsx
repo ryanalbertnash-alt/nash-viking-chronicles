@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Art } from "@/art"
+import { Art, asset } from "@/art"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { START_TOWNS, townById } from "@/shared/catalog.ts"
@@ -23,19 +23,28 @@ export function Gates() {
     unlockMusic()
   }
 
+  if (phase === "boot") {
+    return (
+      <main className="gate loading">
+        <img className="scene" src={asset("scenes/wolves.jpg")} alt="" />
+        <div className="scrim" />
+        <div className="gate-copy">
+          <p className="eyebrow">Chesterville, Ontario</p>
+          <h1><span>Nash's</span><span>Viking</span><span>Chronicles</span></h1>
+          <p className="lede">The horns are sounding.</p>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="gate">
-      <div className="gate-art" aria-hidden="true">
-        <Art file="champions/ryan.svg" alt="" />
-        <Art file="champions/gorgrath.svg" alt="" />
-      </div>
+      <img className="scene" src={asset(phase === "faction" ? "scenes/orc-forest.jpg" : "scenes/wolves.jpg")} alt="" />
+      <div className="scrim" />
       <div className="gate-copy">
         <p className="eyebrow">Chesterville, Ontario</p>
         <h1><span>Nash's</span><span>Viking</span><span>Chronicles</span></h1>
-        {phase === "boot" && <p className="lede">The horns are sounding.</p>}
-        {phase !== "boot" && (
-          <p className="lede">The real road is the warboard. Drive the towns. Meet the other warbands.</p>
-        )}
+        <p className="lede">The real road is the warboard. Drive the towns. Meet the other warbands.</p>
         <p className="fine">Designed by Ryan Nash. You lead a warband. The Nash clan and the Grogs are the champions you find on the road.</p>
         <p className="warn">Ontario law: a driver cannot hold a phone. Above 10 km/h the menus lock. Say “Hey Valhalla”, or hand the phone to a passenger.</p>
         {ios && !installed && <p className="fine">On iPhone: Share, then Add to Home Screen. The game stays on the phone.</p>}
@@ -81,14 +90,21 @@ export function Gates() {
             </div>
             <div className="faction-grid">
               <button className="faction-card" onClick={() => { unlock(); send(gpsSpot ? { t: "choose", faction: "viking", ...gpsSpot } : { t: "choose", faction: "viking", startTownId: start }) }}>
-                <Art file="champions/ryan.svg" alt="Ryan Nash" />
+                <img className="bg" src={asset("scenes/wolves.jpg")} alt="" />
+                <Art className="face" file="champions/ryan.jpg" alt="Ryan Nash" />
                 <div>
                   <h2>Nash clan</h2>
                   <p>Sixteen champions, from Ralph's great axe to Emma's spear. You start with Ryan Nash, warlord, axe and shield. A field poultice is in the satchel.</p>
                 </div>
               </button>
               <button className="faction-card" onClick={() => { unlock(); send(gpsSpot ? { t: "choose", faction: "grog", ...gpsSpot } : { t: "choose", faction: "grog", startTownId: start }) }}>
-                <Art file="champions/gorgrath.svg" alt="Gorgrath Skullsplitter" />
+                <div className="grog-mosaic" aria-hidden="true">
+                  <img src={asset("scenes/orc-braids.jpg")} alt="" />
+                  <img src={asset("scenes/orc-forest.jpg")} alt="" />
+                  <img src={asset("scenes/orc-horned.webp")} alt="" />
+                  <img src={asset("scenes/orc-brute.webp")} alt="" />
+                </div>
+                <Art className="face" file="champions/gorgrath.jpg" alt="Gorgrath Skullsplitter" />
                 <div>
                   <h2>The Grogs</h2>
                   <p>Gorgrath Skullsplitter leads. Mog'Dura binds bone, and Urzog the Mountain still waits at Long Sault. You start with the warchief.</p>

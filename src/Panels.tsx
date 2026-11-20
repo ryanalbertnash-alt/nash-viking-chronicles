@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { Art } from "@/art"
+import { Art, asset } from "@/art"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { BUILDINGS, OFFERS, PASS_TIERS, TOWN_POWER, itemById, itemPrice, items, monthlyShop } from "@/shared/catalog.ts"
@@ -299,8 +299,14 @@ export function BattleView({ battle, onClose }: { battle: BattleResult; onClose:
   }, [step, battle])
   const round = battle.rounds[Math.min(step, battle.rounds.length - 1)]
   const done = step >= battle.rounds.length - 1
+  const left = battleScene(battle.attackerFaction, "left")
+  const right = battleScene(battle.defenderFaction, "right")
   return (
     <section className="battle">
+      <div className="battle-bg" aria-hidden="true">
+        <img src={asset(left)} alt="" />
+        <img src={asset(right)} alt="" />
+      </div>
       <p className="eyebrow">{battle.win ? "Victory" : "Thrown back"} · {battle.kind}</p>
       <h2>{battle.townName ?? battle.defenderName}</h2>
       <div className="lines">
@@ -334,6 +340,12 @@ export function BattleView({ battle, onClose }: { battle: BattleResult; onClose:
       {done && <p className="fine">{battle.summary}</p>}
     </section>
   )
+}
+
+function battleScene(faction: string, side: "left" | "right") {
+  if (faction === "viking") return "scenes/wolves.jpg"
+  if (faction === "grog") return side === "left" ? "scenes/orc-braids.jpg" : "scenes/orc-brute.webp"
+  return side === "left" ? "scenes/orc-forest.jpg" : "scenes/orc-horned.webp"
 }
 
 function bar(hp: number, max: number) {

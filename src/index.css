@@ -88,16 +88,21 @@ img { max-width: 100%; display: block; }
   position: relative;
   overflow: hidden;
 }
-.gate-art {
+.scene {
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 58dvh;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  opacity: 0.92;
-  mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 35%;
 }
-.gate-art img { width: 100%; height: 58dvh; object-fit: cover; object-position: center 22%; }
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(8, 6, 5, 0.2) 0%, rgba(8, 6, 5, 0.72) 48%, #0c0a08 100%);
+}
+.loading { justify-content: flex-end; }
+.portrait, .champ-row img, .faction-card img, .hall-mark img { object-fit: cover; object-position: center 16%; }
 .gate-copy { position: relative; z-index: 1; max-width: 640px; }
 .eyebrow { color: var(--gold); letter-spacing: 0.22em; text-transform: uppercase; font-size: 12px; margin: 0 0 8px; }
 .gate h1 {
@@ -126,17 +131,45 @@ img { max-width: 100%; display: block; }
 .faction-grid { display: grid; gap: 12px; margin-top: 16px; }
 @media (min-width: 800px) { .faction-grid { grid-template-columns: 1fr 1fr; } }
 .faction-card {
+  position: relative;
+  overflow: hidden;
   display: grid;
   grid-template-columns: 104px 1fr;
   gap: 12px;
   text-align: left;
   padding: 10px;
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(226,192,122,0.08), rgba(0,0,0,0.2)), #16110e;
+  background: #16110e;
   border: 1px solid #6d5834;
   box-shadow: inset 0 0 0 1px rgba(226,192,122,0.15);
 }
-.faction-card img { width: 104px; height: 136px; object-fit: cover; border-radius: 10px; }
+.faction-card .bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 40%;
+  opacity: 0.5;
+  border-radius: 0;
+}
+.grog-mosaic {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+.grog-mosaic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+  border-radius: 0;
+  opacity: 0.72;
+}
+.faction-card .face { position: relative; z-index: 1; width: 104px; height: 136px; object-fit: cover; border-radius: 10px; object-position: center 16%; }
+.faction-card > div { position: relative; z-index: 1; }
 .faction-card h2 { font-family: Cinzel, Palatino, serif; margin: 0 0 4px; font-size: 22px; }
 .faction-card p { margin: 0; color: var(--muted-ink); font-size: 14px; line-height: 1.35; }
 .starts { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
@@ -298,13 +331,29 @@ select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b
   position: absolute;
   inset: 0;
   z-index: 4;
-  background: rgba(8, 6, 5, 0.92);
+  background: #0c0a08;
   display: flex;
   flex-direction: column;
   padding: calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));
   gap: 10px;
   pointer-events: auto;
+  overflow: hidden;
 }
+.battle-bg {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  z-index: 0;
+}
+.battle-bg img { width: 100%; height: 100%; object-fit: cover; filter: brightness(0.38) saturate(0.85); }
+.battle-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(8,6,5,0.2), rgba(8,6,5,0.82));
+}
+.battle > :not(.battle-bg) { position: relative; z-index: 1; }
 .battle h2 { font-family: Cinzel, Palatino, serif; margin: 0; }
 .lines { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 0; overflow: auto; }
 .battle .log { margin: 0; font-size: 15px; line-height: 1.4; }

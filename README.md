@@ -38,6 +38,25 @@ Open the game twice. Use two names, two factions, and two start towns (Chestervi
 
 `PORT` changes the port. The saved world is `server/data/world.json`.
 
+## Host it for other phones
+
+The game is one Node process. It serves the web app and the realtime websocket on the same port, so a host only needs to run that process.
+
+The simplest free host is [Render](https://render.com). Make a Render account with GitHub, push this repo, and create a **Web Service**. Render reads `render.yaml`:
+
+- Build: `npm install && npm run build`
+- Start: `npm start`
+- Health check: `/api/health`
+
+The free instance sleeps after a stretch of no visitors, and the first open after that takes a minute. The shared world is a file on that machine. A free restart clears it. A paid disk keeps `server/data` if you want the saga to survive restarts.
+
+The same image runs anywhere else that can start a container. `Dockerfile` builds the site and starts the server. Fly.io can run it too. That account asks for a credit card even on the small allowance.
+
+```bash
+docker build -t nash-viking-chronicles .
+docker run -p 4477:4477 -e PORT=4477 nash-viking-chronicles
+```
+
 ## Later, the App Store
 
 This is a Vite single-page app with no server rendering, which is what Capacitor wraps. `capacitor.config.json` is already here. When you are ready:
@@ -52,8 +71,8 @@ The socket uses the page host, so a wrapped app needs the game server reachable 
 
 ## Map and roads
 
-Terrain is OpenStreetMap via CARTO dark tiles. No API key. Driving lines come from the public OSRM router. © OpenStreetMap contributors, © CARTO.
+Terrain is OpenStreetMap. No API key. The dark grade is a filter on those tiles. Driving lines come from the public OSRM router. © OpenStreetMap contributors.
 
 ## Art
 
-Every Nash champion, every Grog, and all 27 hoard pieces have original illustrations in `public/art`. The uploaded portrait files were not present on the build machine, so these drawings stand in for them.
+Ryan's pictures are the art. Champions and hoard pieces are in `public/art/champions` and `public/art/items`. The wolves painting is the title and the Nash clan card. The four orc paintings are the Grog card, and they sit behind battles.
