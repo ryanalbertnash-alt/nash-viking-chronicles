@@ -1,6 +1,6 @@
 const CACHE = "nvc-saga-1"
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(["/", "/index.html", "/favicon.svg"])))
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(["/", "/index.html"])))
   self.skipWaiting()
 })
 self.addEventListener("activate", (event) => {
