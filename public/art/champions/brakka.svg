@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="skbrakka" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9aaa62"/>
+      <stop offset="0.55" stop-color="#66783a"/>
+      <stop offset="1" stop-color="#33441e"/>
+    </linearGradient>
+    <radialGradient id="bgbrakka" cx="48%" cy="32%" r="68%">
+      <stop offset="0" stop-color="#5a3018"/>
+      <stop offset="0.45" stop-color="#1a120e"/>
+      <stop offset="1" stop-color="#070605"/>
+    </radialGradient>
+    <linearGradient id="ironbrakka" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d7d2c8"/>
+      <stop offset="0.4" stop-color="#8d928f"/>
+      <stop offset="1" stop-color="#3e4448"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bgbrakka)"/>
+  <path d="M20 512 L70 292 Q170 236 256 268 Q376 230 450 300 L492 512 Z" fill="#3a2418"/>
+  <path d="M150 512 L186 330 Q256 300 330 334 L360 512 Z" fill="#6a5038"/>
+  <path d="M210 360 Q256 388 304 360 L292 470 L220 470 Z" fill="#120e0c" opacity="0.35"/>
+  <path d="M228 300 Q256 250 282 304 L274 340 Q256 352 238 338 Z" fill="url(#skbrakka)"/>
+  
+  <path d="M172 204 Q178 284 236 286 Q256 310 324 276 Q340 254 332 198 Q256 128 172 204 Z" fill="url(#skbrakka)"/>
+  <path d="M256 146 Q340 194 336 272 Q266 300 256 146 Z" fill="#000" opacity="0.38"/>
+  
+    <path d="M212 202 Q228 184 244 196" stroke="#1a120c" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M268 196 Q284 176 300 202" stroke="#1a120c" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <ellipse cx="228" cy="210" rx="9" ry="5.5" fill="#d6e27a"/>
+    <ellipse cx="284" cy="210" rx="9" ry="5.5" fill="#d6e27a"/>
+    <ellipse cx="229" cy="210" rx="3.2" ry="3.4" fill="#1a1408"/>
+    <ellipse cx="285" cy="210" rx="3.2" ry="3.4" fill="#1a1408"/>
+    <ellipse cx="226" cy="208.5" rx="1.3" ry="1.1" fill="#fff" opacity="0.8"/>
+    <ellipse cx="282" cy="208.5" rx="1.3" ry="1.1" fill="#fff" opacity="0.8"/>
+  
+  <path d="M254 220 Q248 242 252 250 Q264 248 262 238" fill="none" stroke="#3a2418" stroke-width="3" opacity="0.55" stroke-linecap="round"/>
+  <path d="M202 238 Q256 292 314 236 Q276 260 256 250 Q238 262 202 238 Z" fill="#2a241c" opacity="0.9"/>
+      <path d="M234 256 L226 284 L244 262 Z" fill="#f4efe4"/>
+      <path d="M278 256 L288 286 L268 262 Z" fill="#f4efe4"/>
+  
+  <path d="M216 186 L238 222" stroke="#8a3a32" stroke-width="3" fill="none"/>
+  
+  <g transform="translate(330,70)"><rect x="4" y="20" width="120" height="56" rx="8" fill="#6e5438" stroke="#e2c07a" stroke-width="4"/><path d="M60 76 L60 370" stroke="#3a2a1c" stroke-width="16"/></g>
+  <rect width="512" height="512" fill="url(#bgbrakka)" opacity="0.08"/>
+  <radialGradient id="vigbrakka" cx="50%" cy="45%" r="62%">
+    <stop offset="62%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.72)"/>
+  </radialGradient>
+  <rect width="512" height="512" fill="url(#vigbrakka)"/>
+  </svg>

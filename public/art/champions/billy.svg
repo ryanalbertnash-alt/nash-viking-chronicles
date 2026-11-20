@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="skbilly" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f2c7a2"/>
+      <stop offset="0.55" stop-color="#d08a58"/>
+      <stop offset="1" stop-color="#7a4528"/>
+    </linearGradient>
+    <radialGradient id="bgbilly" cx="48%" cy="32%" r="68%">
+      <stop offset="0" stop-color="#a02020"/>
+      <stop offset="0.45" stop-color="#1a120e"/>
+      <stop offset="1" stop-color="#070605"/>
+    </radialGradient>
+    <linearGradient id="ironbilly" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d7d2c8"/>
+      <stop offset="0.4" stop-color="#8d928f"/>
+      <stop offset="1" stop-color="#3e4448"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bgbilly)"/>
+  <path d="M20 512 L70 292 Q170 236 256 268 Q376 230 450 300 L492 512 Z" fill="#8a1e1e"/>
+  <path d="M150 512 L186 330 Q256 300 330 334 L360 512 Z" fill="#6a3a2a"/>
+  <path d="M210 360 Q256 388 304 360 L292 470 L220 470 Z" fill="#120e0c" opacity="0.35"/>
+  <path d="M228 300 Q256 250 282 304 L274 340 Q256 352 238 338 Z" fill="url(#skbilly)"/>
+  <path d="M240 174 Q256 54 272 178 Q256 194 240 174 Z" fill="#e0b056"/>
+  <path d="M182 204 Q188 284 236 298 Q256 322 314 288 Q330 254 322 198 Q256 116 182 204 Z" fill="url(#skbilly)"/>
+  <path d="M256 134 Q330 194 326 284 Q266 312 256 134 Z" fill="#000" opacity="0.38"/>
+  
+    <path d="M216 197 Q232 184 248 196" stroke="#1a120c" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M264 196 Q280 181 296 197" stroke="#1a120c" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <ellipse cx="232" cy="210" rx="9" ry="5.5" fill="#f4efe4"/>
+    <ellipse cx="280" cy="210" rx="9" ry="5.5" fill="#f4efe4"/>
+    <ellipse cx="233" cy="210" rx="3.2" ry="3.4" fill="#1a120c"/>
+    <ellipse cx="281" cy="210" rx="3.2" ry="3.4" fill="#1a120c"/>
+    <ellipse cx="230" cy="208.5" rx="1.3" ry="1.1" fill="#fff" opacity="0.8"/>
+    <ellipse cx="278" cy="208.5" rx="1.3" ry="1.1" fill="#fff" opacity="0.8"/>
+  
+  <path d="M254 220 Q248 242 252 250 Q264 248 262 238" fill="none" stroke="#3a2418" stroke-width="3" opacity="0.55" stroke-linecap="round"/>
+  <path d="M216 242 Q256 292 298 240 Q256 262 216 242 Z" fill="#e0b056"/>
+  
+  <path d="M216 186 L238 222" stroke="#8a3a32" stroke-width="3" fill="none"/>
+  
+  <g transform="translate(40,80)"><path d="M30 10 C70 0 78 70 34 96 C14 60 12 24 30 10 Z" fill="#c5ccd1"/><path d="M34 70 L70 250" stroke="#6b4124" stroke-width="10"/></g>
+      <g transform="translate(390,90)"><path d="M20 10 C60 0 68 70 24 96 C4 60 2 24 20 10 Z" fill="#c5ccd1"/><path d="M24 70 L-10 250" stroke="#6b4124" stroke-width="10"/></g>
+  <rect width="512" height="512" fill="url(#bgbilly)" opacity="0.08"/>
+  <radialGradient id="vigbilly" cx="50%" cy="45%" r="62%">
+    <stop offset="62%" stop-color="rgba(0,0,0,0)"/>
+    <stop offset="100%" stop-color="rgba(0,0,0,0.72)"/>
+  </radialGradient>
+  <rect width="512" height="512" fill="url(#vigbilly)"/>
+  </svg>
