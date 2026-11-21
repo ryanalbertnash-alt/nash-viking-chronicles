@@ -18,6 +18,7 @@ import {
 } from "../src/shared/catalog.ts"
 import { formatMeters, haversine, homeSpot, nearestOnLine, offsetMeters, pointAlong, routeLength } from "../src/shared/geo.ts"
 import { nearestPost } from "../src/shared/posts.ts"
+import { RECIPES, UNIT_INFO, championClass, companyUnlock, counter, matchLine, unitName, type UnitClass } from "../src/shared/army.ts"
 import { REPORT_INFO, type ReportType } from "../src/shared/reports.ts"
 import { riverRoute } from "../src/shared/routes.ts"
 import type {
@@ -55,6 +56,7 @@ type Side = {
   healMod: number
   save: boolean
   hasRanged: boolean
+  blocks: { cls: UnitClass; name: string; weight: number }[]
   champs: (BattleResult["attackerChamps"][number] & { cry: string })[]
 }
 
@@ -116,6 +118,8 @@ export function normalize(state: GameState): GameState {
   if (!state.reports) state.reports = []
   for (const p of Object.values(state.players)) {
     if (typeof p.scouts !== "number") p.scouts = 0
+    if (!Array.isArray(p.companies)) p.companies = p.faction ? [{ cls: "infantry", strength: 36, xp: 0 }] : []
+    if (typeof p.mail !== "number") p.mail = 0
     delete (p as { sub?: unknown }).sub
   }
   return state
@@ -207,10 +211,12 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     p.np = 250
     p.champions = [{ id: starterId, level: 1, xp: 0, hp: starter.health, weaponId: null }]
     p.warband = [starterId]
+    p.companies = [{ cls: "infantry", strength: 36, xp: 0 }]
+    p.mail = 0
     p.inventory = [{ id: "field-poultice", qty: 1 }]
     p.lastSeen = Date.now()
-    const who = input.faction === "viking" ? "Ryan Nash marches with you." : "Gorgrath Skullsplitter marches with you."
-    const text = `${p.name} swears to the ${input.faction === "viking" ? "Nash clan" : "Grogs"}. ${who} A field poultice is in the satchel. Recovery word: ${p.recovery}.`
+    const who = input.faction === "viking" ? "Ryan Nash marches with you, and a company of huscarls." : "Gorgrath Skullsplitter marches with you, and a mob of boyz."
+    const text = `${p.name} swears to the ${input.faction === "viking" ? "Nash clan" : "Grogs"}. ${who} Raise the forge for archers, the dock for riders. A field poultice is in the satchel. Recovery word: ${p.recovery}.`
     saga(`${p.name} raises a ${input.faction === "viking" ? "hall" : "camp"} on the Seaway.`)
     return { event: event(text, "good") }
   }
@@ -272,7 +278,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     if (!ownerId) return fight(p, null, town, "town", stance, "militia")
     const defender = player(ownerId)
     if (!defender) return { error: "The holder has left the saga." }
-    return fight(p, defender, town, "town", stance, "field")
+    return fight(p, defender, town, "town", stance, defender.walls >= 1 ? "siege" : "field")
   }
 
   function attackPlayer(playerId: string, defenderId: string, stance: Stance = "smash"): ActionResult {
@@ -319,7 +325,12 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     p.gold -= cost
     p[part] += 1
     if (part === "dock") ensureShip(p)
-    const text = `${def.name} rises to level ${p[part]} at ${p.villageName}.`
+    const opened = part === "forge" && p.forge === 1 ? " Archers can now be raised, and the forge will craft an axe or a bow."
+      : part === "dock" && p.dock === 1 ? " Riders can now be raised, and the longship can raid a shore."
+      : part === "walls" && p.walls === 2 ? " Towers will shoot when this place is besieged."
+      : part === "hall" && p.hall === 2 ? " Another hero can march. With a forge at 2, a monster can be raised."
+      : ""
+    const text = `${def.name} rises to level ${p[part]} at ${p.villageName}.${opened}`
     saga(`${p.name} raises ${def.name.toLowerCase()} to level ${p[part]}.`)
     return { event: event(text, "good") }
   }
@@ -368,6 +379,49 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     p.warband = unique
     const names = unique.map((id) => championById(id)?.name ?? id).join(", ")
     return { event: event(`The marching warband is ${names}.`, "info") }
+  }
+
+  function raise(playerId: string, cls: UnitClass): ActionResult {
+    const p = mustHuman(playerId)
+    if ("error" in p) return p
+    if (!UNIT_INFO[cls]) return { error: "That is not a troop I can raise." }
+    const rule = companyUnlock(p, cls)
+    if (!rule.ok) return { error: rule.why }
+    const have = p.companies.find((c) => c.cls === cls)
+    if (have && have.strength >= rule.cap) return { error: `${unitName(p.faction, cls)} are already at full strength. Raise the building to take more.` }
+    const missing = rule.cap - (have?.strength ?? 0)
+    const cost = Math.max(20, Math.round(rule.cost * (missing / rule.cap)))
+    if (p.gold < cost) return { error: `Raising ${unitName(p.faction, cls)} costs ${cost} gold. You hold ${p.gold}.` }
+    p.gold -= cost
+    if (have) have.strength = rule.cap
+    else p.companies.push({ cls, strength: rule.cap, xp: 0 })
+    const text = `${unitName(p.faction, cls)} muster at ${p.villageName}. ${rule.cap} strong. ${UNIT_INFO[cls].blurb}`
+    saga(`${p.name} raises ${unitName(p.faction, cls).toLowerCase()}.`)
+    return { event: event(text, "good") }
+  }
+
+  function craft(playerId: string, key: string): ActionResult {
+    const p = mustHuman(playerId)
+    if ("error" in p) return p
+    const recipe = RECIPES.find((r) => r.key === key)
+    if (!recipe) return { error: "The forge does not know that pattern. Say axe, bow, spear, mail, or maul." }
+    if (recipe.faction && recipe.faction !== p.faction) return { error: "That pattern belongs to the other clan." }
+    if (p.forge < recipe.forge) return { error: `${recipe.label} needs the forge at level ${recipe.forge}.` }
+    if (recipe.mail) {
+      if (p.mail >= 3) return { error: "The warband is already in the heaviest mail the forge can make." }
+      const cost = recipe.gold * (p.mail + 1)
+      if (p.gold < cost) return { error: `Mail costs ${cost} gold. You hold ${p.gold}.` }
+      p.gold -= cost
+      p.mail += 1
+      return { event: event(`The forge beats out mail, rank ${p.mail}. Defense rises in every fight.`, "good") }
+    }
+    const itemId = p.faction === "grog" && recipe.grogItem ? recipe.grogItem : recipe.itemId!
+    const item = itemById(itemId)
+    if (!item) return { error: "That arm is missing from the rack." }
+    if (p.gold < recipe.gold) return { error: `${item.name} costs ${recipe.gold} gold. You hold ${p.gold}.` }
+    p.gold -= recipe.gold
+    giveItem(p, item.id, 1)
+    return { event: event(`The forge finishes ${item.name}. Equip it on a hero. ${recipe.gold} gold.`, "good") }
   }
 
   function drinkPotion(playerId: string, itemId: string): ActionResult {
@@ -558,7 +612,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
           const defender = ownerId ? player(ownerId) : null
           ship.raid = null
           if (attacker && !attacker.isAI) {
-            const outcome = fight(attacker, defender, target, "raid", "smash", defender ? "field" : "militia")
+            const outcome = fight(attacker, defender, target, "raid", "smash", defender && defender.walls >= 1 ? "siege" : defender ? "field" : "militia")
             if (outcome.event) events.push({ playerId: attacker.id, event: outcome.event })
             if (defender && !defender.isAI && outcome.result) {
               const speech = outcome.result.win
@@ -596,7 +650,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     return events
   }
 
-  function fight(attacker: Player, defender: Player | null, town: TownDef | undefined, kind: "town" | "village" | "raid", stance: Stance, mode: "field" | "home" | "militia"): ActionResult {
+  function fight(attacker: Player, defender: Player | null, town: TownDef | undefined, kind: "town" | "village" | "raid", stance: Stance, mode: "field" | "home" | "siege" | "militia"): ActionResult {
     if (stance === "heal") {
       const potion = bestPotion(attacker)
       if (!potion) return { error: "No draughts in the satchel." }
@@ -607,28 +661,40 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     const atk = sideFromPlayer(attacker, "field", kind === "raid")
     let def: Side
     if (mode === "militia" && town) def = militiaSide(town, attacker.faction)
-    else if (defender) def = sideFromPlayer(defender, mode === "home" ? "home" : "field", false)
+    else if (defender) def = sideFromPlayer(defender, mode === "home" ? "home" : mode === "siege" ? "siege" : "field", false)
     else def = militiaSide(town!, attacker.faction)
+    const siege = mode === "home" || mode === "siege"
     const defenderName = defender?.name ?? def.name
     const rounds: BattleResult["rounds"] = []
+    let bestLine = ""
+    let bestEdge = 1
     const opening = atk.champs[0]?.cry
     if (opening) rounds.push({ text: opening, atkHp: atk.hp, defHp: def.hp })
+    if (siege && def.blocks.some((b) => b.name === "Tower archers")) {
+      const shot = def.attack * 0.22
+      atk.hp -= shot
+      rounds.push({ text: `Tower archers loose before the gate. ${Math.round(shot)} fall on the approach.`, atkHp: Math.max(0, Math.round(atk.hp)), defHp: def.hp })
+    }
     for (let r = 1; r <= 5 && atk.hp > 0 && def.hp > 0; r++) {
-      let deal = atk.attack * 0.62
-      let back = def.attack * 0.42
+      const atkBlock = atk.blocks[(r - 1) % Math.max(1, atk.blocks.length)] ?? { cls: "infantry" as const, name: attacker.name, weight: 1 }
+      const defBlock = def.blocks[(r - 1) % Math.max(1, def.blocks.length)] ?? { cls: "infantry" as const, name: defenderName, weight: 1 }
+      const edge = counter(atkBlock.cls, defBlock.cls)
+      let deal = atk.attack * 0.62 * edge
+      let back = def.attack * 0.42 * counter(defBlock.cls, atkBlock.cls)
       const use = r === 1 ? stance : "smash"
       if (use === "smash") { deal *= 1.14; back *= 1.08 }
       if (use === "guard") { deal *= 0.76; back *= 0.6 }
-      if (use === "volley") deal *= atk.hasRanged ? 1.38 : 1.05
+      if (use === "volley") deal *= atk.hasRanged || atkBlock.cls === "archer" ? 1.28 : 1.02
       if (use === "heal") { deal *= 0.72; back *= 0.88 }
       if (def.hp < def.maxHp * 0.34) { deal *= 0.78; back *= 0.82 }
       deal *= 80 / (80 + def.defense) * (0.9 + rng() * 0.2)
       back *= 80 / (80 + atk.defense) * (0.92 + rng() * 0.16)
       def.hp -= deal
       atk.hp -= back
-      const actor = atk.champs[r % Math.max(1, atk.champs.length)]?.name ?? attacker.name
+      const line = matchLine(atkBlock.name, atkBlock.cls, defBlock.name, defBlock.cls)
+      if (Math.abs(edge - 1) > Math.abs(bestEdge - 1)) { bestEdge = edge; bestLine = line }
       rounds.push({
-        text: `${actor} strikes for ${Math.round(deal)}. ${defenderName} answers for ${Math.round(back)}.`,
+        text: `${line} ${Math.round(deal)} against ${Math.round(back)}.`,
         atkHp: Math.max(0, Math.round(atk.hp)),
         defHp: Math.max(0, Math.round(def.hp)),
       })
@@ -642,7 +708,11 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     atk.hp = Math.max(0, atk.hp)
     def.hp = Math.max(0, def.hp)
     applyHp(attacker, atk, win)
-    if (defender && !defender.isAI) applyHp(defender, def, !win)
+    wearCompanies(attacker, atk, win)
+    if (defender && !defender.isAI) {
+      applyHp(defender, def, !win)
+      wearCompanies(defender, def, !win)
+    }
     attacker.buff = null
     if (defender) defender.buff = null
 
@@ -683,7 +753,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     const xpNotes = [...addSeasonXp(attacker, win ? 80 : 35), ...grantChampXp(attacker)]
     const place = town?.name ?? defender?.villageName ?? "the field"
     const recruitId = win && town && kind === "town" ? freeRecruit(town, attacker) : undefined
-    const summary = narrate({
+    const summary = `${bestLine ? `${bestLine} ` : ""}${narrate({
       faction: attacker.faction ?? "viking",
       win,
       place,
@@ -693,7 +763,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       wounded: atk.hp / atk.maxHp < 0.72,
       notes: xpNotes,
       kind,
-    })
+    })}`
     if (win && town && kind === "town") saga(`${attacker.name} takes ${town.name}.`)
     else if (win && kind === "village" && defender) saga(`${attacker.name} sacks ${defender.villageName}.`)
     else if (win && kind === "raid" && town) saga(`${attacker.name} raids ${town.name} from the water.`)
@@ -712,6 +782,9 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       loot,
       summary,
       rounds,
+      siege,
+      attackerUnits: atk.blocks.map((b) => ({ name: b.name, cls: b.cls })),
+      defenderUnits: def.blocks.map((b) => ({ name: b.name, cls: b.cls })),
       atkMax: Math.round(atk.maxHp),
       defMax: Math.round(def.maxHp),
       attackerChamps: atk.champs.map(({ cry: _cry, ...c }) => c),
@@ -721,18 +794,31 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     return { result, event: event(summary, win ? "good" : "bad", summary) }
   }
 
-  function sideFromPlayer(p: Player, mode: "field" | "home", raid: boolean): Side {
+  function sideFromPlayer(p: Player, mode: "field" | "home" | "siege", raid: boolean): Side {
     const side = emptySide(p.name, p.faction ?? "viking")
     const marching = p.warband
       .map((id) => p.champions.find((c) => c.id === id))
       .filter((c): c is NonNullable<typeof c> => !!c && c.hp > 0)
     if (p.isAI && p.ai) {
-      const walls = mode === "home" ? p.walls : 0
+      const walls = mode === "home" ? p.walls : mode === "siege" ? Math.ceil(p.walls * 0.7) : 0
       side.attack = p.ai.attack * (1 + p.forge * 0.04)
-      side.defense = p.ai.defense + walls * 22
-      side.hp = side.maxHp = p.ai.hp + (mode === "home" ? p.hall * 30 : 0)
+      side.defense = p.ai.defense + walls * 22 + p.mail * 8
+      side.hp = side.maxHp = p.ai.hp + (mode === "home" ? p.hall * 30 : mode === "siege" ? p.hall * 12 : 0)
       side.champs = [{ id: p.id, name: p.name, art: p.faction === "grog" ? "scenes/orc-brute.webp" : "scenes/wolves.jpg", hp: side.hp, maxHp: side.maxHp, cry: "" }]
+      side.blocks = aiBlocks(p, mode)
       return side
+    }
+    for (const company of p.companies ?? []) {
+      if (company.strength <= 0) continue
+      const veteran = 1 + Math.min(0.25, company.xp / 200)
+      const weight = company.strength * veteran
+      side.blocks.push({ cls: company.cls, name: unitName(p.faction, company.cls), weight })
+      const punch = company.cls === "monster" ? 1.35 : company.cls === "cavalry" ? 1.05 : company.cls === "archer" ? 0.92 : 0.84
+      side.attack += weight * punch
+      side.defense += weight * (company.cls === "infantry" ? 0.55 : company.cls === "monster" ? 0.4 : 0.28)
+      side.hp += company.strength * 1.4
+      side.maxHp += company.strength * 1.4
+      if (company.cls === "archer") side.hasRanged = true
     }
     for (const owned of marching) {
       const def = championById(owned.id)
@@ -748,6 +834,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       side.healMod += def.healMod
       side.save = side.save || def.save
       side.hasRanged = side.hasRanged || def.ranged
+      side.blocks.push({ cls: championClass(def), name: def.name, weight: def.attack })
       side.champs.push({ id: def.id, name: def.name, art: def.art, hp: owned.hp, maxHp: max, cry: def.cry })
     }
     if (!side.champs.length) {
@@ -756,6 +843,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       side.hp = side.maxHp = 90
       side.champs = [{ id: "levy", name: "Hall levy", art: p.faction === "grog" ? "scenes/orc-horned.webp" : "scenes/wolves.jpg", hp: 90, maxHp: 90, cry: "" }]
     }
+    side.defense += (p.mail ?? 0) * 8
     side.attack *= 1 + p.forge * 0.04
     if (p.buff) {
       side.attack *= 1 + p.buff.attack
@@ -767,11 +855,15 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       side.attack *= stretch
       side.defense *= stretch
     }
-    if (mode === "home") {
-      side.defense += p.walls * 22
-      side.hp += p.hall * 26
-      side.maxHp += p.hall * 26
+    if (mode === "home" || mode === "siege") {
+      const walls = mode === "home" ? p.walls : Math.ceil(p.walls * 0.7)
+      side.defense += walls * 22
+      const hold = mode === "home" ? p.hall * 26 : p.hall * 12
+      side.hp += hold
+      side.maxHp += hold
+      if (p.walls >= 2) side.blocks.push({ cls: "archer", name: "Tower archers", weight: (mode === "home" ? 28 : 18) * p.walls })
     }
+    if (!side.blocks.length) side.blocks.push({ cls: "infantry", name: unitName(p.faction, "infantry"), weight: 20 })
     if (raid) {
       const shipBonus = p.shipId ? (itemById(p.shipId)?.raid ?? 0) : 0
       side.attack *= 1 + p.dock * 0.07 + shipBonus
@@ -787,6 +879,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     side.hp = side.maxHp = power.hp * town.threat
     const militiaArt = championById(town.guardianId ?? "")?.faction === "grog" ? "scenes/orc-forest.jpg" : "scenes/wolves.jpg"
     side.champs = [{ id: `militia-${town.id}`, name: `${town.name} militia`, art: militiaArt, hp: side.maxHp, maxHp: side.maxHp, cry: "" }]
+    side.blocks.push({ cls: "infantry", name: `${town.name} levy`, weight: power.defense })
     if (town.guardianId && !championHolder(town.guardianId)) {
       const guard = championById(town.guardianId)
       if (guard && guard.faction !== attackerFaction) {
@@ -796,6 +889,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
         side.hp += hp
         side.maxHp += hp
         side.champs.push({ id: guard.id, name: guard.name, art: guard.art, hp, maxHp: hp, cry: guard.cry })
+        side.blocks.push({ cls: championClass(guard), name: guard.name, weight: guard.attack })
       }
     }
     return side
@@ -813,6 +907,9 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
         const max = maxHealth(c.id, c.level)
         if (c.hp < max * 0.2) c.hp = Math.round(max * 0.2)
       }
+    }
+    for (const company of p.companies ?? []) {
+      if (won) company.xp += 12
     }
     if (won && side.healMod > 0 && marching.some((c) => c.hp > 0)) {
       for (const c of marching) {
@@ -914,6 +1011,8 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       dock: p.dock,
       gold: p.gold,
       np: p.np,
+      companies: p.companies ?? [],
+      mail: p.mail ?? 0,
       champions: p.champions.map((c) => {
         const def = championById(c.id)!
         const weapon = c.weaponId ? itemById(c.weaponId) : undefined
@@ -996,6 +1095,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       walls: p.walls,
       dock: p.dock,
       gold: p.gold,
+      army: armyLine(p),
       wins: p.wins,
       losses: p.losses,
       raids: p.raids,
@@ -1105,6 +1205,8 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     buy,
     rest,
     restock,
+    raise,
+    craft,
     tribute,
     fileReport,
     confirmReport,
@@ -1153,6 +1255,8 @@ function blankPlayer(partial: Partial<Player> & { id: string; name: string }): P
     gold: partial.gold ?? 0,
     np: partial.np ?? 0,
     champions: partial.champions ?? [],
+    companies: partial.companies ?? [],
+    mail: partial.mail ?? 0,
     warband: partial.warband ?? [],
     inventory: partial.inventory ?? [],
     skinId: null,
@@ -1175,7 +1279,35 @@ function blankPlayer(partial: Partial<Player> & { id: string; name: string }): P
 }
 
 function emptySide(name: string, faction: string): Side {
-  return { name, faction, hp: 0, maxHp: 0, attack: 0, defense: 0, goldMod: 0, healMod: 0, save: false, hasRanged: false, champs: [] }
+  return { name, faction, hp: 0, maxHp: 0, attack: 0, defense: 0, goldMod: 0, healMod: 0, save: false, hasRanged: false, blocks: [], champs: [] }
+}
+
+function wearCompanies(p: Player, side: Side, won: boolean) {
+  const ratio = side.maxHp > 0 ? clamp(side.hp / side.maxHp, 0, 1) : 0
+  const loss = (won ? 0.15 : 0.32) * (1 - ratio)
+  for (const company of p.companies ?? []) {
+    company.strength = Math.max(0, Math.round(company.strength * (1 - loss)))
+  }
+}
+
+function armyLine(p: Player): string {
+  const names = (p.companies ?? []).filter((c) => c.strength > 0).map((c) => unitName(p.faction, c.cls))
+  if (p.isAI) {
+    if (p.forge >= 1) names.push(unitName(p.faction, "archer"))
+    if (p.dock >= 1) names.push(unitName(p.faction, "cavalry"))
+    if (p.hall >= 2 && p.forge >= 2) names.push(unitName(p.faction, "monster"))
+    if (!names.includes(unitName(p.faction, "infantry"))) names.unshift(unitName(p.faction, "infantry"))
+  }
+  return names.join(", ") || unitName(p.faction, "infantry")
+}
+
+function aiBlocks(p: Player, mode: "field" | "home" | "siege"): Side["blocks"] {
+  const blocks: Side["blocks"] = [{ cls: "infantry", name: unitName(p.faction, "infantry"), weight: 40 + p.hall * 18 }]
+  if (p.forge >= 1) blocks.push({ cls: "archer", name: unitName(p.faction, "archer"), weight: 22 + p.forge * 12 })
+  if (p.dock >= 1) blocks.push({ cls: "cavalry", name: unitName(p.faction, "cavalry"), weight: 18 + p.dock * 10 })
+  if (p.hall >= 2 && p.forge >= 2) blocks.push({ cls: "monster", name: unitName(p.faction, "monster"), weight: 55 })
+  if ((mode === "home" || mode === "siege") && p.walls >= 2) blocks.push({ cls: "archer", name: "Tower archers", weight: 16 * p.walls })
+  return blocks
 }
 
 function giveItem(p: Player, id: string, qty: number) {

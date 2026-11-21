@@ -1,4 +1,5 @@
 import { champions, items, towns } from "../src/shared/catalog.ts"
+import { counter } from "../src/shared/army.ts"
 import { usualLimit } from "../src/shared/limits.ts"
 import { reportSpeech } from "../src/shared/reports.ts"
 import { parseCommand } from "../src/shared/voice.ts"
@@ -38,6 +39,12 @@ export async function runWorld() {
   assert(usualLimit("County Road 31").kmh === 80, "county limit")
   assert(usualLimit("Queen Street").kmh === 50, "street limit")
   assert(usualLimit("Highway 417").kmh === 100, "highway limit")
+  assert(counter("infantry", "cavalry") > 1, "spears hold riders")
+  assert(counter("cavalry", "archer") > 1, "riders catch bows")
+  assert(counter("archer", "infantry") > 1, "bows thin spears")
+  assert(counter("infantry", "archer") < 1, "spears suffer shafts")
+  assert(parseCommand("raise archers", false)?.type === "raise", "raise archers")
+  assert(parseCommand("craft a bow", false)?.type === "craft", "craft a bow")
 
   const game = createGame(undefined, () => 0.5)
   const a = game.join({ name: "Sam Nash" })
@@ -58,6 +65,9 @@ export async function runWorld() {
   assert(sam.champions[0].name === "Ryan Nash", "starter")
   assert(sam.np === 250 && sam.gold === 180, "starting purse")
   assert(sam.inventory.some((i) => i.id === "field-poultice"), "poultice")
+  assert(sam.companies.some((c) => c.cls === "infantry" && c.strength > 0), "starts with infantry")
+  assert(game.raise(a.playerId!, "archer").error, "archers need the forge")
+  assert(game.craft(a.playerId!, "bow").error, "the forge must exist before a bow")
 
   const finch = towns.find((t) => t.id === "finch")!
   game.setPos(a.playerId!, { lat: finch.lat, lng: finch.lng, heading: 0, speed: 0 })

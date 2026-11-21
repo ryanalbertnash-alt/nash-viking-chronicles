@@ -446,6 +446,8 @@ function Board({
       return
     }
     if (cmd.type === "build") { send({ t: "do", action: "build", part: cmd.part }); return }
+    if (cmd.type === "raise") { send({ t: "do", action: "raise", cls: cmd.cls }); return }
+    if (cmd.type === "craft") { send({ t: "do", action: "craft", key: cmd.key }); return }
     if (cmd.type === "rest") { send({ t: "do", action: "rest" }); return }
     if (cmd.type === "heal") {
       const potion = me.inventory.map((s) => itemById(s.id)).filter((i) => i && i.kind === "potion").sort((a, b) => (b?.heal ?? 0) - (a?.heal ?? 0))[0]
@@ -528,7 +530,7 @@ function Board({
           <div className="top-row">
             <div className="who">
               <strong>{you.name}</strong>
-              <span>{you.faction === "viking" ? "Nash clan" : "Grogs"} · {you.villageName}</span>
+              <span>{you.faction === "viking" ? "Nash clan" : "Grogs"} · {world.towns.filter((t) => t.ownerFaction === "viking").length} towns to {world.towns.filter((t) => t.ownerFaction === "grog").length}</span>
             </div>
             <div className="purse">
               <div><span>Gold</span><br /><b>{you.gold}</b></div>
@@ -580,7 +582,7 @@ function Board({
               <h2>{nearest.name}</h2>
               <p className="muted" style={{ marginTop: 0 }}>{nearest.ownerId === you.id ? "Yours." : nearest.ownerName ? `${nearest.ownerName} holds it.` : "Unclaimed."} {nearest.guardianName && nearest.guardianFree ? `${nearest.guardianName} can be recruited.` : ""}</p>
               <div className="row">
-                <Button onClick={() => setSheet({ kind: "town", id: nearest.id })}>Enter</Button>
+                <Button onClick={() => setSheet({ kind: "town", id: nearest.id })}>{nearest.ownerId && nearest.ownerId !== you.id ? "Besiege" : "Enter"}</Button>
                 {nearPost && <Button variant="secondary" onClick={() => send({ t: "do", action: "restock" })}>Restock</Button>}
                 {!follow && <Button variant="outline" onClick={() => setFollow(true)}>Recenter</Button>}
               </div>

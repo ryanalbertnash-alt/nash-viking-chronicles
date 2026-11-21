@@ -138,10 +138,10 @@ export const TOWN_POWER: Record<TownKind, { wealth: number; income: number; atta
 }
 
 export const BUILDINGS: Record<BuildingId, { name: string; costs: number[]; text: string }> = {
-  hall: { name: "Great Hall", costs: [120, 280, 560], text: "Feast-hall and war-room. Each level lets another champion march, and more gold comes home." },
-  forge: { name: "Forge", costs: [90, 210, 420], text: "Each level tempers the warband and adds attack." },
-  walls: { name: "Walls", costs: [110, 260, 500], text: "Ditch, bank, and palisade. Each level makes the hall harder to sack." },
-  dock: { name: "Longship Dock", costs: [150, 340, 640], text: "A berth for the Seaway. Unlocks shoreline raids. Higher docks hit harder." },
+  hall: { name: "Great Hall", costs: [120, 280, 560], text: "The heart of the settlement. Each level marches another hero and a larger infantry levy. At level 2, with a forge, you can raise a monster." },
+  forge: { name: "Forge", costs: [90, 210, 420], text: "Unlocks archers. Crafts axes, bows, spears, and mail from gold. At level 2, with the hall, the yard can hold a monster." },
+  walls: { name: "Walls and towers", costs: [110, 260, 500], text: "A palisade, then towers that shoot during a siege, then a keep. Defense when the war comes to your town or your hall." },
+  dock: { name: "Longship Dock", costs: [150, 340, 640], text: "Unlocks cavalry and the longship. Shore towns can be raided. Higher docks hit harder from the water." },
 }
 
 export const PASS_TIERS: { xp: number; freeGold: number; premItem?: string; premGold?: number }[] = [

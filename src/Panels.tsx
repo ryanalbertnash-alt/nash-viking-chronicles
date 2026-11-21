@@ -3,7 +3,8 @@ import { playSfx } from "@/audio"
 import { Art, asset } from "@/art"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
-import { BUILDINGS, OFFERS, PASS_TIERS, TOWN_POWER, itemById, itemPrice, items, monthlyShop } from "@/shared/catalog.ts"
+import { RECIPES, UNIT_INFO, UNIT_ORDER, championClass, companyUnlock, unitName } from "@/shared/army.ts"
+import { BUILDINGS, OFFERS, PASS_TIERS, TOWN_POWER, champions, itemById, itemPrice, items, monthlyShop } from "@/shared/catalog.ts"
 import { driveRoutes } from "@/shared/routes.ts"
 import { formatMeters, haversine } from "@/shared/geo.ts"
 import type { BattleResult, BuildingId, PrivateYou, PublicPlayer, PublicTown, PublicWorld, Stance } from "@/shared/types.ts"
@@ -46,12 +47,13 @@ export function TownPanel({ town, you, world, send, onClose, onStance }: {
       </div>
       <div className="row">
         {!held && !mine && <Button onClick={() => onStance("smash")}>Claim</Button>}
-        {held && <Button variant="destructive" onClick={() => onStance("smash")}>Attack</Button>}
+        {held && <Button variant="destructive" onClick={() => onStance("smash")}>{(world.players.find((p) => p.id === town.ownerId)?.walls ?? 0) >= 2 ? "Besiege the fort" : "Attack the town"}</Button>}
         {mine && <Button onClick={() => send({ t: "do", action: "tribute", townId: town.id })}>Take tribute</Button>}
         {same && <Button variant="secondary" onClick={() => send({ t: "do", action: "recruit", townId: town.id })}>Recruit {town.guardianName?.split(" ")[0]}</Button>}
         {mine && <Button variant="outline" onClick={() => send({ t: "do", action: "rest" })}>Rest</Button>}
       </div>
-      <p className="fine">Worth about {TOWN_POWER[town.kind].wealth} gold. Say “claim town”, “attack”, or “recruit”.</p>
+      <p className="fine">Worth about {TOWN_POWER[town.kind].wealth} gold. Drive here to recruit, take the town, or besiege it. Say “claim town”, “attack”, or “recruit”.</p>
+      {held && <p className="fine">{town.ownerName}'s army: {world.players.find((p) => p.id === town.ownerId)?.army ?? "a levy"}.</p>}
       <p className="fine">{world.saga[0]?.text}</p>
     </Sheet>
   )
@@ -117,13 +119,36 @@ export function WarbandPanel({ you, send, onClose }: { you: PrivateYou; send: Se
   }
   return (
     <Sheet title="Warband" onClose={onClose}>
-      <p className="muted" style={{ margin: 0 }}>Marching {you.warband.length} of {you.warbandCap}. Raise the hall to take more.</p>
+      <p className="muted" style={{ margin: 0 }}>Heroes marching {you.warband.length} of {you.warbandCap}. The hall unlocks more. Infantry beats cavalry, cavalry beats archers, archers beat infantry, and a monster breaks a shield wall.</p>
+      {UNIT_ORDER.map((cls) => {
+        const rule = companyUnlock(you, cls)
+        const have = you.companies.find((c) => c.cls === cls)
+        const info = UNIT_INFO[cls]
+        return (
+          <article key={cls} className="card">
+            <h3>{unitName(you.faction, cls)} · {info.title}</h3>
+            <p className="fine">{info.blurb} Beats {UNIT_INFO[info.beats].title}.</p>
+            <p className="muted" style={{ margin: 0 }}>{have ? `${have.strength} strong` : "Not raised."}{rule.ok ? ` · cap ${rule.cap}` : ""}</p>
+            {rule.ok ? <Button size="sm" onClick={() => send({ t: "do", action: "raise", cls })}>{have ? "Refill" : "Raise"} · {rule.cost} gold</Button> : <p className="fine">{rule.why}</p>}
+          </article>
+        )
+      })}
+      <article className="card">
+        <h3>Forge · mail rank {you.mail}</h3>
+        <p className="fine">Craft arms for gold. Equip them on a hero. Mail is worn by the whole army.</p>
+        <div className="row">
+          {RECIPES.filter((r) => !r.faction || r.faction === you.faction).map((r) => (
+            <Button key={r.key} size="sm" variant="outline" onClick={() => send({ t: "do", action: "craft", key: r.key })}>{r.label} · forge {r.forge}</Button>
+          ))}
+        </div>
+      </article>
+      <p className="muted" style={{ margin: 0 }}>Heroes</p>
       {you.champions.map((c) => (
         <article key={c.id} className="card champ-row">
           <Art file={c.art} alt="" />
           <div>
             <h3>{c.name}</h3>
-            <p className="muted" style={{ margin: 0 }}>{c.title} · level {c.level} · {c.ability}</p>
+            <p className="muted" style={{ margin: 0 }}>{c.title} · {UNIT_INFO[championClass(champions.find((d) => d.id === c.id) ?? { id: c.id, ranged: false })].title} · level {c.level} · {c.ability}</p>
             <p className="fine">{c.abilityText}</p>
             <div className="hp" aria-label={`${c.hp} of ${c.maxHp} health`}><span style={{ width: `${Math.max(0, Math.min(100, (c.hp / c.maxHp) * 100))}%` }} /></div>
             <p className="fine">Attack {c.attack} · Defense {c.defense} · {c.hp}/{c.maxHp}</p>
@@ -325,8 +350,12 @@ export function BattleView({ battle, onClose }: { battle: BattleResult; onClose:
         <img src={asset(left)} alt="" />
         <img src={asset(right)} alt="" />
       </div>
-      <p className="eyebrow">{battle.win ? "Victory" : "Thrown back"} · {battle.kind}</p>
+      <p className="eyebrow">{battle.win ? "Victory" : "Thrown back"} · {battle.siege ? "siege" : battle.kind}</p>
       <h2>{battle.townName ?? battle.defenderName}</h2>
+      <div className="unit-lines">
+        <p>{battle.attackerUnits.map((u) => u.name).join(" · ") || battle.attackerName}</p>
+        <p>{battle.defenderUnits.map((u) => u.name).join(" · ") || battle.defenderName}</p>
+      </div>
       <div className="lines">
         <div>
           <p className="gold">{battle.attackerName}</p>

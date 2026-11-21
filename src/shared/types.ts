@@ -1,3 +1,4 @@
+import type { Company } from "./army.ts"
 import type { RoadReport } from "./reports.ts"
 
 export type Faction = "viking" | "grog"
@@ -109,6 +110,8 @@ export type Player = {
   gold: number
   np: number
   champions: OwnedChampion[]
+  companies: Company[]
+  mail: number
   warband: string[]
   inventory: { id: string; qty: number }[]
   skinId: string | null
@@ -177,6 +180,9 @@ export type BattleResult = {
   loot?: { id: string; name: string }
   summary: string
   rounds: { text: string; atkHp: number; defHp: number }[]
+  siege: boolean
+  attackerUnits: { name: string; cls: string }[]
+  defenderUnits: { name: string; cls: string }[]
   atkMax: number
   defMax: number
   attackerChamps: ChampView[]
@@ -220,6 +226,7 @@ export type PublicPlayer = {
   walls: number
   dock: number
   gold: number
+  army: string
   wins: number
   losses: number
   raids: number
@@ -290,6 +297,8 @@ export type PrivateYou = {
   gold: number
   np: number
   champions: PrivateChampion[]
+  companies: Company[]
+  mail: number
   warband: string[]
   warbandCap: number
   inventory: { id: string; name: string; kind: ItemKind; qty: number; art: string }[]

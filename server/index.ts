@@ -6,6 +6,7 @@ import { createServer } from "node:http"
 import express from "express"
 import { WebSocketServer, type WebSocket } from "ws"
 import { WORLD_VERSION } from "../src/shared/catalog.ts"
+import type { UnitClass } from "../src/shared/army.ts"
 import type { BuildingId, Faction, ServerMsg, Stance } from "../src/shared/types.ts"
 import { createGame, freshState, normalize } from "./world.ts"
 import { buildRoute, roadAt, searchPlaces } from "./route.ts"
@@ -222,6 +223,8 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
     if (action === "attackPlayer") return game.attackPlayer(id, String(msg.playerId ?? ""), stance)
     if (action === "raid") return game.raid(id, typeof msg.townId === "string" ? msg.townId : undefined)
     if (action === "build") return game.build(id, String(msg.part ?? "") as BuildingId)
+    if (action === "raise") return game.raise(id, String(msg.cls ?? "") as UnitClass)
+    if (action === "craft") return game.craft(id, String(msg.key ?? ""))
     if (action === "equip") return game.equip(id, typeof msg.championId === "string" ? msg.championId : null, typeof msg.itemId === "string" ? msg.itemId : null)
     if (action === "warband") return game.setWarband(id, Array.isArray(msg.ids) ? msg.ids.map(String) : [])
     if (action === "potion") return game.drinkPotion(id, String(msg.itemId ?? ""))

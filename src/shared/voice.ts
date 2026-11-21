@@ -16,6 +16,8 @@ export type VoiceCommand =
   | { type: "shop" }
   | { type: "board" }
   | { type: "build"; part: "hall" | "forge" | "walls" | "dock" }
+  | { type: "raise"; cls: "infantry" | "archer" | "cavalry" | "monster" }
+  | { type: "craft"; key: string }
   | { type: "mute" }
   | { type: "unmute" }
   | { type: "center" }
@@ -72,6 +74,15 @@ function parseBody(s: string): VoiceCommand {
   if (/\bbuild\b|\braise\b/.test(s) && /\bwall/.test(s)) return { type: "build", part: "walls" }
   if (/\bbuild\b|\braise\b/.test(s) && /\bdock\b|\blongship dock\b/.test(s)) return { type: "build", part: "dock" }
   if (/\bbuild\b|\braise\b/.test(s) && /\bhall\b/.test(s)) return { type: "build", part: "hall" }
+  if (/\braise\b|\bmuster\b/.test(s) && /\b(archers?|bows?|arrers)\b/.test(s)) return { type: "raise", cls: "archer" }
+  if (/\braise\b|\bmuster\b/.test(s) && /\b(rider|riders|cavalry|boar)\b/.test(s)) return { type: "raise", cls: "cavalry" }
+  if (/\braise\b|\bmuster\b/.test(s) && /\b(monster|troll|jotun)\b/.test(s)) return { type: "raise", cls: "monster" }
+  if (/\braise\b|\bmuster\b/.test(s) && /\b(infantry|spear|huscarl|boyz|shields)\b/.test(s)) return { type: "raise", cls: "infantry" }
+  if (/\bcraft\b|\bforge\b/.test(s) && /\b(mail|armor|armour)\b/.test(s)) return { type: "craft", key: "mail" }
+  if (/\bcraft\b|\bforge\b/.test(s) && /\b(bow)\b/.test(s)) return { type: "craft", key: "bow" }
+  if (/\bcraft\b|\bforge\b/.test(s) && /\b(spear)\b/.test(s)) return { type: "craft", key: "spear" }
+  if (/\bcraft\b|\bforge\b/.test(s) && /\b(maul|hammer|heavy)\b/.test(s)) return { type: "craft", key: "maul" }
+  if (/\bcraft\b|\bforge\b/.test(s) && /\b(axe|choppa)\b/.test(s)) return { type: "craft", key: "axe" }
   if (/\braid\b|\blongship\b|\bdragon ship\b|\bsend the ship\b/.test(s)) {
     const target = s.replace(/.*\b(?:raid|longship)\b/, "").replace(/\b(with|the|send|to|on)\b/g, " ").trim()
     return { type: "raid", target: target || undefined }
