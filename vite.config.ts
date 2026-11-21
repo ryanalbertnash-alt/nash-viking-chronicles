@@ -9,5 +9,6 @@ const root = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   resolve: { alias: { "@": path.join(root, "src") } },
   plugins: [react(), tailwindcss()],
-  server: { host: "0.0.0.0", port: 4477 },
+  server: { host: "0.0.0.0", port: 4477, allowedHosts: true },
+  preview: { host: "0.0.0.0", allowedHosts: true },
 })

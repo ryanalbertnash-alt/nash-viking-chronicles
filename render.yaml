@@ -1,10 +1,9 @@
 services:
   - type: web
     name: nash-viking-chronicles
-    runtime: node
+    runtime: docker
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV

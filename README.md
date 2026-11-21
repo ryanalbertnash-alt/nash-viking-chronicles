@@ -41,19 +41,17 @@ Open the game twice. Use two names, two factions, and two start towns (Chestervi
 
 ## Host it for other phones
 
-The game is one Node process. It serves the web app and the realtime websocket on the same port, so a host only needs to run that process.
+The game is one Node process. `npm start` serves the built site and the realtime websocket on the same port (`PORT`, or 4477). There is no Vite dev server in that mode. Phones need the **https** address: location, the microphone, and the home-screen install all refuse a plain http link. The socket uses `wss` on that same host.
 
-The simplest free host is [Render](https://render.com). Make a Render account with GitHub, push this repo, and create a **Web Service**. Render reads `render.yaml`:
+The free host that fits is [Render](https://render.com). The service sleeps after about 15 minutes with no visitors and wakes on the next open, which can take a minute. WebSockets work once it is awake. The saved world lives on that machine's disk and can disappear on a new deploy or a free-tier restart. `render.yaml` already points at the Dockerfile, which includes the narrator (`espeak-ng`). If the narrator is missing, the phone speaks the line itself.
 
-- Build: `npm install && npm run build`
-- Start: `npm start`
-- Health check: `/api/health`
+This project is not on GitHub, and Render can only build from a Git host it can clone. The steps to put it there are at the end of this file.
 
-The free instance sleeps after a stretch of no visitors, and the first open after that takes a minute. The shared world is a file on that machine. A free restart clears it. A paid disk keeps `server/data` if you want the saga to survive restarts.
-
-The same image runs anywhere else that can start a container. `Dockerfile` builds the site and starts the server. Fly.io can run it too. That account asks for a credit card even on the small allowance.
+Fly.io can run the same image with `fly.toml`, and a deploy token can upload this folder without GitHub. Fly asks for a credit card even when the bill stays at zero, so Render is the free path.
 
 ```bash
+npm run build
+npm start
 docker build -t nash-viking-chronicles .
 docker run -p 4477:4477 -e PORT=4477 nash-viking-chronicles
 ```
@@ -81,3 +79,33 @@ Music beds are original. The 24 champions each have five spoken lines, made with
 ## Art
 
 Ryan's pictures are the art. Champions and hoard pieces are in `public/art/champions` and `public/art/items`. The wolves painting is the title and the Nash clan card. The four orc paintings are the Grog card, and they sit behind battles.
+
+## Put it on Render
+
+1. Open [github.com/new](https://github.com/new). Name the repository `nash-viking-chronicles`. Leave it empty: no README, no license. Create it.
+2. In this project, add that repository and push `main` (replace `YOURNAME`):
+
+```bash
+git remote add github https://github.com/YOURNAME/nash-viking-chronicles.git
+git push -u github main
+```
+
+3. Open [dashboard.render.com](https://dashboard.render.com) and sign up. The Google or GitHub button is enough. No credit card.
+4. Click **New** → **Blueprint**. Connect the GitHub repository from step 1. Render reads `render.yaml` and creates the free web service. Click **Apply**.
+5. Wait until the deploy is **Live**. Open the URL Render shows, ending in `.onrender.com`. That is the address to bookmark and to share. Two phones on that address share one map.
+
+The first open after a quiet stretch takes about a minute while the free instance wakes. After that, play is immediate.
+
+If you would rather not use GitHub, Fly.io can upload this folder with a token. That account asks for a credit card.
+
+1. Sign up at [fly.io/app/sign-up](https://fly.io/app/sign-up).
+2. Open [fly.io/user/personal_access_tokens](https://fly.io/user/personal_access_tokens) and create a token named `deploy`. Copy it.
+3. On a machine that has this project:
+
+```bash
+curl -L https://fly.io/install.sh | sh
+export FLY_API_TOKEN='paste-the-token'
+fly launch --copy-config --yes
+```
+
+`fly.toml` is already filled in. The command prints an `https://….fly.dev` address.

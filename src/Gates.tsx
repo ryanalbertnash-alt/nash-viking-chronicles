@@ -47,6 +47,7 @@ export function Gates() {
         <p className="lede">The real road is the warboard. Drive the towns. Meet the other warbands.</p>
         <p className="fine">Designed by Ryan Nash. You lead a warband. The Nash clan and the Grogs are the champions you find on the road.</p>
         <p className="warn">Ontario law: a driver cannot hold a phone. Above 10 km/h the menus lock. Say “Hey Valhalla”, or hand the phone to a passenger.</p>
+        {!window.isSecureContext && <p className="warn">Open the https address. A phone will not share its location or microphone on a plain http link.</p>}
         {ios && !installed && <p className="fine">On iPhone: Share, then Add to Home Screen. The game stays on the phone.</p>}
         {link === "down" && <p className="warn">The saga line dropped. Reconnecting.</p>}
         {(note || feed.error) && phase !== "play" && <p className="warn">{note || feed.error}</p>}

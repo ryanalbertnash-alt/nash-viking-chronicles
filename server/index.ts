@@ -107,15 +107,30 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
     res.json({ ok: true, name: "Nash's Viking Chronicles", players: world.players.length, towns: world.towns.length })
   })
 
+  app.set("trust proxy", 1)
   const prod = process.env.NODE_ENV === "production"
   if (opts.vite === false) {
     app.get("/", (_req, res) => res.type("text").send("Nash's Viking Chronicles socket is up."))
   } else if (prod) {
     const dist = path.join(process.cwd(), "dist")
-    app.use(express.static(dist, { index: false, maxAge: "1h" }))
+    const indexHtml = path.join(dist, "index.html")
+    if (!fs.existsSync(indexHtml)) {
+      throw new Error("Production build is missing. Run npm run build before npm start.")
+    }
+    app.use(express.static(dist, {
+      index: false,
+      setHeaders(res, file) {
+        const base = path.basename(file)
+        if (base === "sw.js" || base === "index.html" || base === "manifest.webmanifest") {
+          res.setHeader("Cache-Control", "no-cache")
+        }
+      },
+    }))
     app.use((req, res, next) => {
       if (req.method !== "GET" && req.method !== "HEAD") return next()
-      res.sendFile(path.join(dist, "index.html"), (err) => (err ? next() : undefined))
+      if (req.path.startsWith("/api") || req.path.startsWith("/ws")) return next()
+      res.setHeader("Cache-Control", "no-cache")
+      res.sendFile(indexHtml, (err) => (err ? next() : undefined))
     })
   } else {
     const { createServer: createViteServer } = await import("vite")

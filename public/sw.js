@@ -1,10 +1,14 @@
-const CACHE = "nvc-saga-1"
+const CACHE = "nvc-saga-2"
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(["/", "/index.html"])))
   self.skipWaiting()
 })
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim())
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim()),
+  )
 })
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url)
