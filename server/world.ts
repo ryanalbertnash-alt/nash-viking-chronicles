@@ -17,6 +17,7 @@ import {
   warbandCap,
 } from "../src/shared/catalog.ts"
 import { formatMeters, haversine, homeSpot, nearestOnLine, offsetMeters, pointAlong, routeLength } from "../src/shared/geo.ts"
+import { nearestPost } from "../src/shared/posts.ts"
 import { REPORT_INFO, type ReportType } from "../src/shared/reports.ts"
 import { riverRoute } from "../src/shared/routes.ts"
 import type {
@@ -478,8 +479,8 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     p.gold += info.gold
     p.scouts += 1
     const notes = addSeasonXp(p, info.xp)
-    const text = `${info.label} marked. ${info.theme}. You earn ${info.gold} gold for the scout. ${notes.join(" ")}`.trim()
-    saga(`${p.name} marks ${info.label.toLowerCase()} on the road.`)
+    const text = `${info.title} marked. ${info.label}. You earn ${info.gold} gold for the warning. ${notes.join(" ")}`.trim()
+    saga(`${p.name} warns of ${info.title.toLowerCase()}. ${info.label}.`)
     return { event: event(text, "good") }
   }
 
@@ -498,14 +499,34 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       p.gold += 8
       p.scouts += 1
       addSeasonXp(p, 15)
-      return { event: event(`${info.label} is still there. Eight gold for confirming.`, "good") }
+      return { event: event(`${info.title} is still there. ${info.label}. Eight gold for confirming.`, "good") }
     }
     report.gone.push(p.id)
     p.gold += 6
     p.scouts += 1
     addSeasonXp(p, 12)
     if (report.gone.length >= 2) state.reports = state.reports.filter((r) => r.id !== report.id)
-    return { event: event(`${info.label} may be gone. Six gold for checking.`, "info") }
+    return { event: event(`${info.title} may be gone. ${info.label}. Six gold for checking.`, "info") }
+  }
+
+  function restock(playerId: string, now = Date.now()): ActionResult {
+    const p = mustHuman(playerId)
+    if ("error" in p) return p
+    const hit = nearestPost(p, 180)
+    if (!hit) return { error: "No trading post is close. A trading post is a gas station." }
+    if (p.gold < 12) return { error: "Restock costs 12 gold." }
+    if (now - p.restAt < 45000) return { error: "The warband is still at the cask. Give it a moment." }
+    p.gold -= 12
+    p.restAt = now
+    let gained = 0
+    for (const c of p.champions) {
+      const max = maxHealth(c.id, c.level)
+      const next = Math.min(max, c.hp + Math.round(max * 0.18))
+      gained += next - c.hp
+      c.hp = next
+    }
+    const tended = gained > 0 ? `binds ${gained} wounds and fills the satchel` : "fills the satchel"
+    return { event: event(`${hit.post.title} ${tended}. ${hit.post.brand}, ${hit.post.place}. Gas station. Twelve gold.`, "good") }
   }
 
   function tick(now = Date.now()): { playerId: string; event: GameEvent }[] {
@@ -1090,6 +1111,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     drinkPotion,
     buy,
     rest,
+    restock,
     tribute,
     fileReport,
     confirmReport,

@@ -8,6 +8,7 @@ if (typeof gl.setWorkerUrl === "function") gl.setWorkerUrl(workerUrl)
 else gl.workerUrl = workerUrl
 import { asset } from "@/art"
 import { haversine } from "@/shared/geo.ts"
+import { TRADING_POSTS } from "@/shared/posts.ts"
 import { REPORT_INFO } from "@/shared/reports.ts"
 import type { PrivateYou, PublicWorld } from "@/shared/types.ts"
 
@@ -38,6 +39,7 @@ export function WarMap({
   onTown,
   onHall,
   onReport,
+  onPost,
   onFree,
 }: {
   you: PrivateYou
@@ -51,14 +53,15 @@ export function WarMap({
   onTown: (id: string) => void
   onHall: (id: string) => void
   onReport: (id: string) => void
+  onPost: (id: string) => void
   onFree: () => void
 }) {
   const host = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const marks = useRef(new Map<string, maplibregl.Marker>())
   const [booted, setBooted] = useState(false)
-  const cb = useRef({ onTown, onHall, onReport, onFree, locked })
-  cb.current = { onTown, onHall, onReport, onFree, locked }
+  const cb = useRef({ onTown, onHall, onReport, onPost, onFree, locked })
+  cb.current = { onTown, onHall, onReport, onPost, onFree, locked }
   const posRef = useRef(pos)
   posRef.current = pos
 
@@ -152,9 +155,14 @@ export function WarMap({
     }
     for (const report of world.reports) {
       const info = REPORT_INFO[report.type]
-      const node = nodeOf(`<div class="pin report ${report.type}" data-sig="${report.type}:${report.still.length}:${report.gone.length}"><div class="label">${escapeHtml(info.label)} · ${escapeHtml(info.theme)}</div><div class="dot"></div></div>`)
+      const node = nodeOf(`<div class="pin report ${report.type}" data-sig="${report.type}:${report.still.length}:${report.gone.length}"><div class="label"><b>${escapeHtml(info.title)}</b><small>${escapeHtml(info.label)}</small></div><img class="mark" alt="" src="${asset(info.icon)}" /></div>`)
       node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onReport(report.id) })
       put(`report:${report.id}`, report.lng, report.lat, node, "bottom")
+    }
+    for (const post of TRADING_POSTS) {
+      const node = nodeOf(`<div class="pin post-mark" data-sig="${post.id}"><div class="label"><b>${escapeHtml(post.title)}</b><small>Gas station</small></div><img class="mark" alt="" src="${asset("marks/tavern.svg")}" /></div>`)
+      node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onPost(post.id) })
+      put(`post:${post.id}`, post.lng, post.lat, node, "bottom")
     }
     for (const p of world.players) {
       if (!p.faction) continue
@@ -168,7 +176,10 @@ export function WarMap({
       put(`hall:${p.id}`, p.homeLng, p.homeLat, node, "bottom")
       const away = haversine({ lat: p.lat, lng: p.lng }, { lat: p.homeLat, lng: p.homeLng })
       if (p.id !== you.id && away > 150) {
-        const puck = nodeOf(`<div class="puck" data-sig="puck-${p.id}"><i data-heading="${p.heading}" style="border-bottom-color:${p.faction === "grog" ? "#c45a32" : "#7fa8b8"}"></i></div>`)
+        const ship = p.faction === "viking"
+        const face = ship ? "marks/longship.svg" : "marks/warband.svg"
+        const title = ship ? "Longship" : "Rival warband"
+        const puck = nodeOf(`<div class="rider ${p.faction}" data-sig="ride-${p.id}-${p.faction}"><img data-heading="${p.heading}" alt="" src="${asset(face)}" /><div class="label"><b>${escapeHtml(p.name)}</b><small>${title} · another driver</small></div></div>`)
         put(`ride:${p.id}`, p.lng, p.lat, puck, "center")
       }
     }
@@ -185,6 +196,9 @@ export function WarMap({
       }
     }
     marks.current.get("me")?.getElement().querySelector("i")?.setAttribute("data-heading", String(pos.heading))
+    for (const p of world.players) {
+      marks.current.get(`ride:${p.id}`)?.getElement().querySelector("[data-heading]")?.setAttribute("data-heading", String(p.heading))
+    }
     for (const ship of world.ships) {
       marks.current.get(`ship:${ship.id}`)?.getElement().querySelector("img")?.setAttribute("data-heading", String(ship.heading))
     }

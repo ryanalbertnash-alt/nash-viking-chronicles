@@ -22,7 +22,7 @@ Open [http://127.0.0.1:4477](http://127.0.0.1:4477). On a phone, use the compute
 7. Above 10 km/h the tap menus lock. That is on purpose. Ontario does not allow a driver to hold a phone. A passenger can flip **Passenger Mode**. Long-press the rune to pull over.
 8. Parked, a fight shows each blow. While the wheels turn, you only get the spoken report.
 9. The hoard sells skins, weapons, longships, and draughts for Nash Points. **Every purchase in this prototype is a demo. Nothing is charged.**
-10. Search a destination, or say “Hey Valhalla, navigate to Ottawa.” The route is a real road, with spoken turns, an ETA, and a reroute if you leave it. Say “Hey Valhalla, police” (or construction, crash, hazard, pothole, traffic, road closed, weather, camera) to mark the road for every player. Confirm with “still there” or “not there.” Reports pay gold and scout fame. The speed shows the usual Ontario limit for that kind of road. You cannot type a search while the car is moving.
+10. Search a destination, or say “Hey Valhalla, navigate to Ottawa.” The route is a real road, with spoken turns, an ETA, and a reroute if you leave it. Say “Hey Valhalla, police” (or construction, crash, hazard, pothole, traffic, road closed, weather, ice, fog, animal, camera). The warband hears an evil wizard, a fortress wall, a chariot wreck, a marching army, and the rest, and the small line under the icon always says what it really is. Gas stations are trading posts. Other drivers on the road are longships and rival warbands. Confirm with “still there” or “not there.” Reports pay gold and seer fame. The speed shows the usual Ontario limit for that kind of road. You cannot type a search while the car is moving.
 
 ## Two players
 

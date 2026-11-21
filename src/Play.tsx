@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { narrate, playSfx, playSting, playVoice, setDrivingAudio, setMusicBattle, setMusicFaction, setMusicLevel, setMusicMuted, unlockMusic } from "@/audio"
+import { asset } from "@/art"
 import { BattleView, HallPanel, RoadsPanel, SagaPanel, Sheet, ShopPanel, TownPanel, WarbandPanel } from "@/Panels"
 import { WarMap } from "@/WarMap"
 import { LOCK_KMH, champions, itemById } from "@/shared/catalog.ts"
@@ -11,13 +12,14 @@ import { formatMeters, haversine, pointAlong, projectRoute, routeLength } from "
 import { driveRoutes, riverRoute } from "@/shared/routes.ts"
 import type { PublicPlayer, PublicTown, Stance } from "@/shared/types.ts"
 import type { VoiceCommand } from "@/shared/voice.ts"
+import { nearestPost, postById, postSpeech, TRADING_POSTS } from "@/shared/posts.ts"
 import { REPORT_INFO, REPORT_TYPES, reportSpeech } from "@/shared/reports.ts"
 import type { NavPlan } from "@/shared/nav.ts"
 import { matchName, parseCommand } from "@/shared/voice.ts"
 import { useSession } from "@/session"
 import { canListen, listenOnce, onCaption, setVoiceFaction, speak, startAmbient, unlockSpeech } from "@/speech"
 
-type Sheet = null | { kind: "town" | "hall" | "warband" | "shop" | "saga" | "roads" | "report"; id?: string }
+type Sheet = null | { kind: "town" | "hall" | "warband" | "shop" | "saga" | "roads" | "report" | "post"; id?: string }
 type Pending = { kind: "town" | "player"; id: string; action: "claim" | "attackTown" | "attackPlayer" }
 
 export function Play() {
@@ -340,6 +342,24 @@ function Board({
       said.current.add(report.id)
       speak(reportSpeech(report.type, dist), true)
     }
+    for (const post of TRADING_POSTS) {
+      let dist = haversine(here, post)
+      if (plan && proj) {
+        const mark = projectRoute(plan.coords, post.lat, post.lng)
+        const ahead = mark.along - proj.along
+        if (mark.off > 80 || ahead < 80 || ahead > 900) continue
+        dist = ahead
+      } else {
+        if (dist > 900 || dist < 80) continue
+        const face = bearingFrom(here, post)
+        let delta = Math.abs(face - here.heading) % 360
+        if (delta > 180) delta = 360 - delta
+        if (delta > 70) continue
+      }
+      if (said.current.has(post.id)) continue
+      said.current.add(post.id)
+      speak(postSpeech(dist), true)
+    }
   }
 
   async function beginNav(target: string) {
@@ -377,6 +397,10 @@ function Board({
     const me = youRef.current
     const map = worldRef.current
     const here = posRef.current
+    if (cmd.type === "restock") {
+      send({ t: "do", action: "restock" })
+      return
+    }
     if (cmd.type === "road") {
       send({ t: "do", action: "report", kind: cmd.kind })
       return
@@ -472,6 +496,8 @@ function Board({
   const limit = nav && along ? ([...nav.steps].reverse().find((s) => s.at <= along.along + 10)?.limit ?? 50) : roadLimit
   const nextTurn = nav && along ? nav.steps.find((s) => s.at > along.along + 30) : null
   const eta = nav && along ? Math.max(1, Math.round((nav.seconds * Math.max(0, 1 - along.along / Math.max(nav.meters, 1))) / 60)) : null
+  const nearPost = nearestPost(pos, 180)
+  const post = sheet?.kind === "post" && sheet.id ? postById(sheet.id) : undefined
   const objective = !you.townIds.length
     ? `Claim ${nearest?.name ?? "the town you stand in"}.`
     : you.hall < 1
@@ -494,6 +520,7 @@ function Board({
         onTown={(id) => setSheet({ kind: "town", id })}
         onHall={(id) => setSheet({ kind: "hall", id })}
         onReport={(id) => setSheet({ kind: "report", id })}
+        onPost={(id) => setSheet({ kind: "post", id })}
         onFree={() => setFollow(false)}
       />
       <div className="hud">
@@ -554,8 +581,17 @@ function Board({
               <p className="muted" style={{ marginTop: 0 }}>{nearest.ownerId === you.id ? "Yours." : nearest.ownerName ? `${nearest.ownerName} holds it.` : "Unclaimed."} {nearest.guardianName && nearest.guardianFree ? `${nearest.guardianName} can be recruited.` : ""}</p>
               <div className="row">
                 <Button onClick={() => setSheet({ kind: "town", id: nearest.id })}>Enter</Button>
+                {nearPost && <Button variant="secondary" onClick={() => send({ t: "do", action: "restock" })}>Restock</Button>}
                 {!follow && <Button variant="outline" onClick={() => setFollow(true)}>Recenter</Button>}
               </div>
+              {nearPost && <p className="fine">{nearPost.post.title}. {nearPost.post.brand}, {nearPost.post.place}. Gas station. 12 gold.</p>}
+            </div>
+          )}
+          {!locked && nearPost && !(nearest && haversine(pos, nearest) < 900) && !battle && (
+            <div className="arrival">
+              <h2>{nearPost.post.title}</h2>
+              <p className="muted" style={{ marginTop: 0 }}>{nearPost.post.brand}, {nearPost.post.place}. Gas station. Restock the warband for 12 gold.</p>
+              <Button onClick={() => send({ t: "do", action: "restock" })}>Restock</Button>
             </div>
           )}
           <div className="voice-row">
@@ -623,12 +659,25 @@ function Board({
         )}
         {!locked && sheet?.kind === "report" && !sheet.id && (
           <Sheet title="Mark the road" onClose={() => setSheet(null)}>
-            <p className="fine">The real meaning is always on the label. The theme is how the warband sees it. Other drivers can say still there, or not there.</p>
+            <p className="fine">The warband name is the big line. The small line is what it really is. Other drivers can say still there, or not there.</p>
             <div className="grid-2">
               {REPORT_TYPES.map((kind) => (
-                <Button key={kind} variant="outline" onClick={() => { send({ t: "do", action: "report", kind }); setSheet(null) }}>{REPORT_INFO[kind].label}</Button>
+                <Button key={kind} variant="outline" onClick={() => { send({ t: "do", action: "report", kind }); setSheet(null) }}>
+                  <span className="mark-choice">
+                    <img alt="" src={asset(REPORT_INFO[kind].icon)} />
+                    <span><b>{REPORT_INFO[kind].title}</b><small>{REPORT_INFO[kind].label}</small></span>
+                  </span>
+                </Button>
               ))}
             </div>
+          </Sheet>
+        )}
+        {!locked && sheet?.kind === "post" && post && (
+          <Sheet title={post.title} onClose={() => setSheet(null)}>
+            <img className="mark-hero" alt="" src={asset("marks/tavern.svg")} />
+            <p>{post.brand}, {post.place}. Gas station.</p>
+            <p className="fine">A trading post. Stop here, then restock. Twelve gold closes some wounds and fills the satchel.</p>
+            <Button onClick={() => send({ t: "do", action: "restock" })}>Restock · 12 gold</Button>
           </Sheet>
         )}
         {!locked && sheet?.kind === "report" && sheet.id && (
@@ -636,7 +685,12 @@ function Board({
             {(() => {
               const mark = world.reports.find((r) => r.id === sheet.id)
               const info = mark ? REPORT_INFO[mark.type] : null
-              return <p>{info ? `${info.label}. ${info.theme}.` : "That mark has faded."} {mark ? `Marked by ${mark.reporterName}.` : ""}</p>
+              return (
+                <>
+                  {info && <img className="mark-hero" alt="" src={asset(info.icon)} />}
+                  <p>{info ? <><b>{info.title}.</b> {info.theme} <span className="fine">{info.label}.</span></> : "That mark has faded."} {mark ? `Marked by ${mark.reporterName}.` : ""}</p>
+                </>
+              )
             })()}
             <div className="row">
               <Button onClick={() => send({ t: "do", action: "confirm", reportId: sheet.id, still: true })}>Still there</Button>

@@ -227,6 +227,7 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
     if (action === "potion") return game.drinkPotion(id, String(msg.itemId ?? ""))
     if (action === "buy") return game.buy(id, String(msg.sku ?? ""))
     if (action === "rest") return game.rest(id)
+    if (action === "restock") return game.restock(id)
     if (action === "tribute") return game.tribute(id, String(msg.townId ?? ""))
     if (action === "report" && REPORT_TYPES.includes(String(msg.kind) as ReportType)) return game.fileReport(id, String(msg.kind) as ReportType)
     if (action === "confirm") return game.confirmReport(id, String(msg.reportId ?? ""), Boolean(msg.still))

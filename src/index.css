@@ -374,11 +374,25 @@ select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b
   white-space: nowrap;
 }
 .map-far .label { display: none; }
-.map-far .pin.report .label { display: inline; }
-.pin.report .dot { background: #e2c07a; }
-.pin.report.police .dot, .pin.report.camera .dot, .pin.report.redlight .dot { background: #c45a32; }
-.pin.report.construction .dot, .pin.report.closed .dot { background: #8a7040; }
-.pin.report.crash .dot, .pin.report.hazard .dot { background: #8e2d24; }
+.map-far .pin.report .label,
+.map-far .post-mark .label,
+.map-far .rider .label { display: inline-flex; }
+.pin.report .label, .post-mark .label, .rider .label {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+  max-width: 132px;
+}
+.pin .label small, .rider .label small { color: #e2c07a; font-size: 10px; }
+.pin .mark, .rider img { width: 40px; height: 40px; filter: drop-shadow(0 2px 2px rgba(0,0,0,.65)); }
+.rider { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.mark-choice { display: flex; gap: 8px; align-items: center; text-align: left; width: 100%; }
+.mark-choice img { width: 36px; height: 36px; flex: none; }
+.mark-choice small, .mark-hero + p .fine { display: block; color: #e2c07a; font-size: 12px; }
+.mark-hero { width: 72px; height: 72px; }
 .over-limit strong { color: #e07060; }
 .volume { width: 72px; accent-color: var(--gold); }
 .puck { width: 28px; height: 28px; display: grid; place-items: center; }

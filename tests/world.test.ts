@@ -1,5 +1,6 @@
 import { champions, items, towns } from "../src/shared/catalog.ts"
 import { usualLimit } from "../src/shared/limits.ts"
+import { reportSpeech } from "../src/shared/reports.ts"
 import { parseCommand } from "../src/shared/voice.ts"
 import { createGame } from "../server/world.ts"
 
@@ -25,7 +26,14 @@ export async function runWorld() {
   assert(button?.type === "recruit", "recruit")
   assert(parseCommand("build the longship dock", false)?.type === "build", "dock before raid parse")
   assert(parseCommand("the radio said attack", true) === null, "no wake no attack")
-  assert(parseCommand("hey valhalla police", true)?.type === "road", "police report")
+  const police = parseCommand("hey valhalla police", true)
+  assert(police?.type === "road" && police.kind === "police", "police report")
+  const wizard = parseCommand("hey valhalla evil wizard", true)
+  assert(wizard?.type === "road" && wizard.kind === "police", "wizard is police")
+  const carriage = parseCommand("horse and carriage", false)
+  assert(carriage?.type === "road" && carriage.kind === "stopped", "carriage is a stopped vehicle")
+  const warning = reportSpeech("police", 800)
+  assert(warning.includes("evil wizard") && warning.includes("Police"), warning)
   assert(parseCommand("navigate to ottawa", false)?.type === "navigate", "navigate")
   assert(usualLimit("County Road 31").kmh === 80, "county limit")
   assert(usualLimit("Queen Street").kmh === 50, "street limit")

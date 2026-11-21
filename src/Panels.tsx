@@ -241,20 +241,20 @@ export function SagaPanel({ world, onClose }: { world: PublicWorld; onClose: () 
         <span>Grogs {world.board.clans.grog}</span>
         <div className="track"><span style={{ width: `${(world.board.clans.viking / total) * 100}%` }} /></div>
       </div>
-      <p className="fine">Scout marks add to a clan's hold on the map. Top Scouts are the drivers other players trust.</p>
+      <p className="fine">Seers warn the road. Each warning is a real thing — police, a jam, ice — told as the warband sees it. Those warnings add to the clan's hold on the map.</p>
       <div className="tabs">
         <Button size="sm" variant={tab === "war" ? "default" : "outline"} onClick={() => setTab("war")}>Warriors</Button>
         <Button size="sm" variant={tab === "towns" ? "default" : "outline"} onClick={() => setTab("towns")}>Towns</Button>
         <Button size="sm" variant={tab === "gold" ? "default" : "outline"} onClick={() => setTab("gold")}>Richest</Button>
         <Button size="sm" variant={tab === "raids" ? "default" : "outline"} onClick={() => setTab("raids")}>Raids</Button>
-        <Button size="sm" variant={tab === "scouts" ? "default" : "outline"} onClick={() => setTab("scouts")}>Scouts</Button>
+        <Button size="sm" variant={tab === "scouts" ? "default" : "outline"} onClick={() => setTab("scouts")}>Seers</Button>
         <Button size="sm" variant={tab === "log" ? "default" : "outline"} onClick={() => setTab("log")}>Log</Button>
       </div>
       {tab === "war" && world.board.warriors.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.wins} wins · {r.faction}</p>)}
       {tab === "towns" && world.board.towns.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.count} towns</p>)}
       {tab === "gold" && world.board.richest.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.worth} worth</p>)}
       {tab === "raids" && world.board.raids.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.raids} raids</p>)}
-      {tab === "scouts" && world.board.scouts.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.scouts} scout marks · {r.faction}</p>)}
+      {tab === "scouts" && world.board.scouts.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.scouts} warnings on the real road · {r.faction}</p>)}
       {tab === "log" && world.saga.map((s) => <p key={s.id} className="fine">{s.text}</p>)}
     </Sheet>
   )

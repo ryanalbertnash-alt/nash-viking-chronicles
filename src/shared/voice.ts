@@ -24,6 +24,7 @@ export type VoiceCommand =
   | { type: "road"; kind: ReportType }
   | { type: "navigate"; target: string }
   | { type: "confirm"; still: boolean }
+  | { type: "restock" }
   | { type: "unknown"; heard: string }
 
 export function normalizeSpeech(raw: string): string {
@@ -57,6 +58,7 @@ function parseBody(s: string): VoiceCommand {
   if (road) return { type: "road", kind: road }
   if (/\bstill there\b|\byes still\b/.test(s)) return { type: "confirm", still: true }
   if (/\bnot there\b|\bit'?s gone\b|\bno longer there\b/.test(s)) return { type: "confirm", still: false }
+  if (/\brestock\b|\btrading post\b|\bfill the satchel\b|\btavern\b/.test(s)) return { type: "restock" }
   if (/\b(navigate|directions|take me)\b/.test(s)) {
     const target = s.replace(/.*\b(?:navigate|directions|take me)\b/, "").replace(/\b(to|towards|toward)\b/g, " ").trim()
     if (target) return { type: "navigate", target }
@@ -103,18 +105,21 @@ function parseBody(s: string): VoiceCommand {
 }
 
 function roadKind(s: string): ReportType | null {
-  if (/\bred light\b|\bred-light\b/.test(s)) return "redlight"
-  if (/\bspeed camera\b|\bcamera\b/.test(s)) return "camera"
-  if (/\bcrash\b|\baccident\b|\bcollision\b/.test(s)) return "crash"
-  if (/\bconstruction\b|\broadwork\b|\bwork zone\b/.test(s)) return "construction"
-  if (/\bpolice\b|\bcop\b|\brcmp\b|\bopp\b/.test(s)) return "police"
-  if (/\bpothole\b/.test(s)) return "pothole"
-  if (/\btraffic jam\b|\bjam\b|\btraffic\b/.test(s)) return "jam"
-  if (/\broad closed\b|\bclosed road\b|\bclosure\b/.test(s)) return "closed"
-  if (/\bweather\b|\bice\b|\bflood\b|\bsnow\b/.test(s)) return "weather"
-  if (/\bstopped (vehicle|car|truck)\b/.test(s)) return "stopped"
-  if (/\bobject\b|\bdebris\b/.test(s)) return "object"
-  if (/\bhazard\b/.test(s)) return "hazard"
+  if (/\bred light\b|\bred-light\b|\bwatchtower\b/.test(s)) return "redlight"
+  if (/\bspeed camera\b|\bcamera\b|\ball-seeing\b|\bcrystal\b|\borb\b/.test(s)) return "camera"
+  if (/\bcrash\b|\baccident\b|\bcollision\b|\bchariot\b/.test(s)) return "crash"
+  if (/\bconstruction\b|\broadwork\b|\bwork zone\b|\bdwarves\b|\bfortress\b/.test(s)) return "construction"
+  if (/\bpolice\b|\bcop\b|\brcmp\b|\bopp\b|\bwizard\b/.test(s)) return "police"
+  if (/\bpothole\b|\btroll hole\b|\bsinkhole\b/.test(s)) return "pothole"
+  if (/\btraffic jam\b|\bjam\b|\btraffic\b|\barmy\b|\bmarching\b/.test(s)) return "jam"
+  if (/\broad closed\b|\bclosed road\b|\bclosure\b|\bcastle gate\b/.test(s)) return "closed"
+  if (/\bice\b|\bfrost\b|\bblack ice\b/.test(s)) return "ice"
+  if (/\bfog\b|\bmist\b/.test(s)) return "fog"
+  if (/\banimal\b|\bbeast\b|\bdeer\b|\bmoose\b/.test(s)) return "animal"
+  if (/\bweather\b|\bflood\b|\bsnow\b|\bstorm spirit\b/.test(s)) return "weather"
+  if (/\bstopped (vehicle|car|truck)\b|\bhorse\b|\bcarriage\b|\bbroken down\b/.test(s)) return "stopped"
+  if (/\bobject\b|\bdebris\b|\bboulder\b|\btreasure\b|\bchest\b/.test(s)) return "object"
+  if (/\bhazard\b|\btrap\b/.test(s)) return "hazard"
   return null
 }
 
