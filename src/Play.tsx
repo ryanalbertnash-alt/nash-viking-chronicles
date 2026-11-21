@@ -8,6 +8,7 @@ import { asset } from "@/art"
 import { HallPanel, RoadsPanel, SagaPanel, Sheet, ShopPanel, TownPanel, WarbandPanel } from "@/Panels"
 import { VillageView } from "@/Village"
 import { Tabletop } from "@/Tabletop"
+import { Battle3D } from "@/Battle3D"
 import { WarMap } from "@/WarMap"
 import { LOCK_KMH, champions, itemById } from "@/shared/catalog.ts"
 import { formatMeters, haversine, pointAlong, projectRoute, routeLength } from "@/shared/geo.ts"
@@ -59,6 +60,7 @@ function Board({
   const [extraTowns, setExtraTowns] = useState<PublicTown[]>([])
   const [clock, setClock] = useState(Date.now())
   const [built, setBuilt] = useState<BuildingId | null>(null)
+  const [flatBattle, setFlatBattle] = useState(false)
   const [level, setLevel] = useState(70)
   const [roadLimit, setRoadLimit] = useState<number | null>(null)
   const roadLimitRef = useRef<number | null>(null)
@@ -149,7 +151,6 @@ function Board({
     if (speed > LOCK_KMH && !passenger) {
       setSheet(null)
       setPending(null)
-      setBattle(undefined)
     }
   }, [speed, passenger])
 
@@ -162,26 +163,13 @@ function Board({
     setCaption(text)
     const result = feed.result
     if (result) {
-      const tactical = speedRef.current <= LOCK_KMH || passRef.current
       setMusicBattle(true)
       playSfx("horn")
       if (youRef.current.faction === "grog") playSfx("roar")
       const lead = youRef.current.warband[0]
-      if (tactical) {
-        if (lead) void playVoice(lead, "cry")
-        setBattle(result)
-      } else {
-        void (async () => {
-          if (lead) await playVoice(lead, "cry")
-          playSfx(result.win ? "clash" : "shield")
-          await narrate(result.summary)
-          playSting(result.win)
-          if (lead) await playVoice(lead, result.win ? "victory" : "defeat")
-          const hurt = youRef.current.champions.find((c) => youRef.current.warband.includes(c.id) && c.hp / c.maxHp < 0.35)
-          if (hurt) await playVoice(hurt.id, "low")
-          if (result.gold > 0) playSfx("coins")
-        })()
-      }
+      if (lead) void playVoice(lead, "cry")
+      setBattle(result)
+      if (speedRef.current > LOCK_KMH && !passRef.current) void narrate(result.summary)
       return
     }
     const joined = champions.find((c) => text.startsWith(c.name) && text.includes("joins"))
@@ -758,14 +746,25 @@ function Board({
         )}
       </div>
 
-      {battle && <Tabletop battle={battle} auto={locked} onClose={() => {
-        const done = battle
-        setBattle(undefined)
-        playSting(done.win)
-        const lead = you.warband[0]
-        if (lead) void playVoice(lead, done.win ? "victory" : "defeat")
-        if (done.gold > 0) playSfx("coins")
-      }} />}
+      {battle && (flatBattle ? (
+        <Tabletop battle={battle} auto={locked} onClose={() => {
+          const done = battle
+          setBattle(undefined)
+          playSting(done.win)
+          const lead = you.warband[0]
+          if (lead) void playVoice(lead, done.win ? "victory" : "defeat")
+          if (done.gold > 0) playSfx("coins")
+        }} />
+      ) : (
+        <Battle3D battle={battle} auto={locked} onFallback={() => setFlatBattle(true)} onClose={() => {
+          const done = battle
+          setBattle(undefined)
+          playSting(done.win)
+          const lead = you.warband[0]
+          if (lead) void playVoice(lead, done.win ? "victory" : "defeat")
+          if (done.gold > 0) playSfx("coins")
+        }} />
+      ))}
 
       <Dialog open={!!pending} onOpenChange={(open) => !open && setPending(null)}>
         <DialogContent>

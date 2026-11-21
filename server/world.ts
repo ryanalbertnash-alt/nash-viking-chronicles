@@ -275,7 +275,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     return names
   }
 
-  function setPos(playerId: string, pos: { lat: number; lng: number; heading: number; speed: number }): GameEvent[] {
+  function setPos(playerId: string, pos: { lat: number; lng: number; heading: number; speed: number }): (GameEvent & { result?: BattleResult })[] {
     const p = player(playerId)
     if (!p || p.faction == null) return []
     if (!Number.isFinite(pos.lat) || !Number.isFinite(pos.lng)) return []
@@ -709,21 +709,69 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     return event(text, tone, text)
   }
 
-  function roadFight(p: Player, kind: string, lead: string): GameEvent {
+  function roadFight(p: Player, kind: string, lead: string): GameEvent & { result?: BattleResult } {
     const atk = sideFromPlayer(p, "field", false)
     const foe = kind === "monster" ? 78 : kind === "warband" ? 58 : 42
     const win = atk.attack + rng() * 24 > foe
+    let gold = 0
+    let text = ""
+    let tone: GameEvent["tone"] = "bad"
     if (win) {
-      const gold = kind === "monster" ? 48 : kind === "warband" ? 36 : 28
+      gold = kind === "monster" ? 48 : kind === "warband" ? 36 : 28
       p.gold += gold
       p.wins += 1
       if (kind === "monster") giveItem(p, "field-poultice", 1)
-      return finishRoad(p, `${lead} You break them. ${gold} gold is already in the hall.`, "good")
+      text = `${lead} You break them. ${gold} gold is already in the hall.`
+      tone = "good"
+    } else {
+      p.losses += 1
+      const lost = Math.min(p.gold, 12)
+      p.gold -= lost
+      gold = 0
+      text = `${lead} They hit and run. You lose ${lost} gold. The warband is still standing.`
     }
-    p.losses += 1
-    const lost = Math.min(p.gold, 12)
-    p.gold -= lost
-    return finishRoad(p, `${lead} They hit and run. You lose ${lost} gold. The warband is still standing.`, "bad")
+    const ev = finishRoad(p, text, tone)
+    return { ...ev, result: roadScene(p, kind, win, gold, ev.text) }
+  }
+
+  function roadScene(p: Player, kind: string, win: boolean, gold: number, summary: string): BattleResult {
+    const foeFaction = p.faction === "grog" ? "viking" : "grog"
+    const foeCls: UnitClass = kind === "monster" ? "monster" : kind === "warband" ? "infantry" : "archer"
+    const foeName = kind === "monster" ? (foeFaction === "grog" ? "Troll" : "Jotun") : kind === "warband" ? "Rival war band" : "Ambushers"
+    const foeArt = champions.find((c) => c.faction === foeFaction && championClass(c) === foeCls) ?? champions.find((c) => c.faction === foeFaction)!
+    const atkUnits = (p.companies ?? []).filter((c) => c.strength > 0).slice(0, 3).map((c) => ({ name: unitName(p.faction, c.cls), cls: c.cls }))
+    if (!atkUnits.length) atkUnits.push({ name: unitName(p.faction, "infantry"), cls: "infantry" })
+    const champs = p.warband.slice(0, 3).map((id) => {
+      const owned = p.champions.find((c) => c.id === id)
+      const def = championById(id)
+      return { id, name: def?.name ?? id, art: def?.art ?? "scenes/wolves.jpg", hp: owned?.hp ?? 40, maxHp: maxHealth(id, owned?.level ?? 1) }
+    })
+    return {
+      id: nid("b"),
+      kind: "village",
+      attackerName: p.name,
+      defenderName: foeName,
+      attackerFaction: p.faction ?? "viking",
+      defenderFaction: foeFaction,
+      win,
+      gold,
+      summary,
+      rounds: [
+        { text: `${p.name} meets ${foeName}.`, atkHp: 120, defHp: 120 },
+        { text: "Steel, shafts, and bodies.", atkHp: win ? 88 : 54, defHp: win ? 62 : 96 },
+        { text: win ? `${foeName} breaks.` : "The warband falls back.", atkHp: win ? 70 : 16, defHp: win ? 0 : 58 },
+      ],
+      siege: false,
+      attackerUnits: atkUnits,
+      defenderUnits: [
+        { name: foeName, cls: foeCls },
+        { name: unitName(foeFaction, foeCls === "monster" ? "infantry" : foeCls), cls: foeCls === "monster" ? "infantry" : foeCls },
+      ],
+      atkMax: 120,
+      defMax: 120,
+      attackerChamps: champs,
+      defenderChamps: [{ id: foeArt.id, name: foeArt.name, art: foeArt.art, hp: foeArt.health, maxHp: foeArt.health }],
+    }
   }
 
   function roadRecruit(p: Player): GameEvent {

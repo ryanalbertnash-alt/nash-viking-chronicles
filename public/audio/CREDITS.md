@@ -2,16 +2,16 @@
 
 ## Music
 
-The live soundtrack is original and generated in the browser with Web Audio. Nothing is sampled from a recording, a game, or a folk archive.
+The live score is original music synthesized for this game and stored in the repo. It is not copied from a recording, a game, or a folk archive. No royalty is due.
 
-- Village: a slow drone, a plucked line in D dorian (the tagelharpa or lyre part), and a soft frame drum.
-- Map and adventure, while the wheels turn: a marching drum and horn fifths. It sits quieter than the village.
-- Battle: faster war drums, horn stabs, and a low two-note chant.
-- Victory and defeat: short horn stings.
+- `village.mp3` — slow drone, a plucked line, a soft drum, and a low chant.
+- `march.mp3` — marching drums and horns for the map and the road.
+- `battle.mp3` — fast war drums, horn stabs, and a throat-singing style chant.
+- `victory-sting.mp3` and `defeat-sting.mp3` — the result.
 
-The older files in `music/` (`explore-viking.mp3`, `explore-grog.mp3`, `battle-viking.mp3`, `battle-grog.mp3`, `victory.mp3`, `defeat.mp3`) are earlier original beds made for this game. The live score no longer plays them. They are not taken from Warhammer or any other game. No royalty is due.
+Grogs play the same beds a little slower. The volume slider and the mute cover the score, the effects, and the voices together. Any spoken line ducks the music.
 
-The volume slider and the mute cover the score, the effects, and the voices together. Any spoken line ducks the music.
+Earlier original beds are still in this folder (`explore-viking.mp3`, `explore-grog.mp3`, `battle-viking.mp3`, `battle-grog.mp3`, `victory.mp3`, `defeat.mp3`). The live game does not play them. They are not from Warhammer or any other game.
 
 ## Places
 
@@ -39,6 +39,7 @@ Kenney (www.kenney.nl), CC0 1.0
 These were made for this game, also free to bundle:
 
 - `horn.mp3`, `drums.mp3`, `drink.mp3`, `oars.mp3`
+- `arrow.mp3` — a short synthesized whoosh for shafts in the 3D battle
 - `roar.mp3` — an eSpeak shout, then the same grit used on the Grogs
 
 While the car is moving, music sits lower and drops further under any voice. The volume slider and mute cover music, effects, and voices together.

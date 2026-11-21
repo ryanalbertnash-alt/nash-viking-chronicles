@@ -282,7 +282,9 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
           saveSoon()
           const world = game.publicWorld()
           for (const event of events) {
-            send(ws, { t: "event", you: game.privateYou(id), world, event })
+            const result = event.result
+            if (result) send(ws, { t: "result", you: game.privateYou(id)!, world, result, event })
+            else send(ws, { t: "event", you: game.privateYou(id), world, event })
           }
           broadcastState()
         }
