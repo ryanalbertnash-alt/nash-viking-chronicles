@@ -83,7 +83,6 @@ export function HallPanel({ person, you, world, send, onClose, onAttack, onLeave
     const town = world.towns.find((t) => t.id === id)
     if (town) income += TOWN_POWER[town.kind].income
   }
-  if (you.sub) income = Math.round(income * 1.25)
   return (
     <Sheet title={you.villageName} onClose={onClose}>
       <p className="muted" style={{ margin: 0 }}>About {income} gold every half minute. Warband cap {you.warbandCap}. Recovery word: <b className="gold">{you.recovery}</b></p>
@@ -171,7 +170,7 @@ export function ShopPanel({ you, send, onClose }: { you: PrivateYou; send: Send;
   const list = tab === "moon" ? [...featured, ...items.filter((i) => i.kind === "potion")] : items
   return (
     <Sheet title="The hoard" onClose={onClose}>
-      <div className="demo-flag">Demo hoard. Nothing is charged. In the App Store build, Nash Points and the oath go through Apple. Prices below are the real shelf: 800 NP $8.99, 2,400 NP $22.99, 4,500 NP $36.99, 12,500 NP $89.99. The oath is free for a month, then $10 a month or $120 a year.</div>
+      <div className="demo-flag">The game is free. Skins, weapons, draughts, the Battle Pass, and Nash Points are optional extras. You can claim towns, recruit, and fight without buying any of them. This demo charges nothing. Shelf prices, if a player wants points later: 800 NP $8.99, 2,400 NP $22.99, 4,500 NP $36.99, 12,500 NP $89.99.</div>
       <p className="fine">You hold {you.np} Nash Points. Moon of {shop.label}. Next rotation {shop.nextLabel}. Featured pieces are 20% off.</p>
       <div className="tabs">
         <Button size="sm" variant={tab === "moon" ? "default" : "outline"} onClick={() => setTab("moon")}>This moon</Button>
@@ -198,28 +197,27 @@ export function ShopPanel({ you, send, onClose }: { you: PrivateYou; send: Send;
         <>
           <article className="card">
             <h3>Seaway Battle Pass · 800 NP</h3>
-            <p className="fine">Free track pays gold. The pass adds weapons, draughts, and a cloak. Tier {you.freeTier} of {PASS_TIERS.length}. {you.pass ? "Pass owned." : "Pass locked."} Season {you.seasonXp} xp.</p>
+            <p className="fine">Optional. Playing already pays the free track in gold. The pass adds extra weapons, draughts, and a cloak. Tier {you.freeTier} of {PASS_TIERS.length}. {you.pass ? "Pass owned." : "Not bought."} Season {you.seasonXp} xp.</p>
             <div className="pips">{PASS_TIERS.map((tier, i) => <i key={tier.xp} className={i < you.freeTier ? "on" : ""} />)}</div>
-            {!you.pass && <Button onClick={() => setSku("battle-pass")}>Unlock pass · demo</Button>}
+            {!you.pass && <Button onClick={() => setSku("battle-pass")}>Optional pass · 800 NP</Button>}
           </article>
-          {OFFERS.filter((o) => o.kind === "pack" || o.kind === "sub").map((o) => (
+          {OFFERS.filter((o) => o.kind === "pack").map((o) => (
             <article key={o.sku} className="card">
               <h3>{o.name}</h3>
               <p className="fine">{o.blurb}</p>
-              <Button size="sm" variant="secondary" onClick={() => setSku(o.sku)}>{o.kind === "pack" ? `Demo $${o.usd.toFixed(2)}` : o.usd ? `Demo $${o.usd}` : "Start free month"}</Button>
+              <Button size="sm" variant="secondary" onClick={() => setSku(o.sku)}>Optional demo · ${o.usd.toFixed(2)}</Button>
             </article>
           ))}
         </>
       )}
       <Dialog open={!!sku} onOpenChange={(open) => !open && setSku(null)}>
         <DialogContent>
-          <DialogTitle>Demo purchase</DialogTitle>
+          <DialogTitle>Optional extra</DialogTitle>
           <DialogDescription>
             {item && `${item.name} for ${price} Nash Points. `}
             {offer?.kind === "pack" && `${offer.name}. The shelf price is $${offer.usd.toFixed(2)} US. `}
             {offer?.kind === "pass" && "Seaway Battle Pass for 800 Nash Points. "}
-            {offer?.kind === "sub" && `${offer.blurb} `}
-            Nothing is charged. This is not a real payment.
+            The game is already complete without this. Nothing is charged.
           </DialogDescription>
           <div className="row" style={{ marginTop: 12 }}>
             <Button onClick={() => { if (sku) send({ t: "do", action: "buy", sku }); setSku(null) }}>Add it</Button>

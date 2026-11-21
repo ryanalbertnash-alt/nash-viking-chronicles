@@ -114,7 +114,10 @@ export function normalize(state: GameState): GameState {
   if (!state.flavorAt) state.flavorAt = Date.now()
   if (!state.economyAt) state.economyAt = Date.now()
   if (!state.reports) state.reports = []
-  for (const p of Object.values(state.players)) if (typeof p.scouts !== "number") p.scouts = 0
+  for (const p of Object.values(state.players)) {
+    if (typeof p.scouts !== "number") p.scouts = 0
+    delete (p as { sub?: unknown }).sub
+  }
   return state
 }
 
@@ -396,17 +399,9 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       p.np -= 800
       p.pass = true
       const notes = syncPass(p)
-      return { event: event(`Seaway Battle Pass unlocked. Demo only, no charge. ${notes.join(" ")}`.trim(), "good") }
+      return { event: event(`Seaway Battle Pass unlocked. Optional extra, and nothing was charged. ${notes.join(" ")}`.trim(), "good") }
     }
-    if (sku === "sub-trial" || sku === "sub-month" || sku === "sub-year") {
-      const plan = sku === "sub-trial" ? "trial" : sku === "sub-month" ? "month" : "year"
-      if (plan === "trial" && p.sub) return { error: "The free month is already spent. The demo monthly is $10 and the year is $120, still uncharged." }
-      p.sub = { plan }
-      const grant = plan === "year" ? 400 : 200
-      p.np += grant
-      const price = plan === "month" ? "$10 a month" : plan === "year" ? "$120 a year" : "the first month free, then $10 a month or $120 a year"
-      return { event: event(`Oath of the Road: ${price}. Demo only, nothing charged. ${grant} Nash Points added. Gold from towns is heavier while the oath holds.`, "good") }
-    }
+    if (sku.startsWith("sub-")) return { error: "The game is free. There is no subscription." }
     const item = itemById(sku)
     if (!item) return { error: "The hoard does not stock that." }
     const price = itemPrice(item.id)
@@ -542,7 +537,6 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
           if (def) gold += TOWN_POWER[def.kind].income
         }
         gold += p.hall * 4
-        if (p.sub) gold = Math.round(gold * 1.25)
         p.gold += gold
       }
     }
@@ -954,7 +948,6 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       freeTier: p.freeTier,
       premTier: p.premTier,
       nextTierXp: next ? next.xp : null,
-      sub: p.sub,
       townIds: state.towns.filter((t) => t.ownerId === p.id).map((t) => t.id),
     }
   }
@@ -1173,7 +1166,6 @@ function blankPlayer(partial: Partial<Player> & { id: string; name: string }): P
     pass: false,
     freeTier: 0,
     premTier: 0,
-    sub: null,
     restAt: 0,
     tribute: {},
     lastBattleAt: 0,

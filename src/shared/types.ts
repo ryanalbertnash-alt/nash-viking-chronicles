@@ -122,7 +122,6 @@ export type Player = {
   pass: boolean
   freeTier: number
   premTier: number
-  sub: null | { plan: "trial" | "month" | "year" }
   restAt: number
   tribute: Record<string, number>
   lastBattleAt: number
@@ -306,7 +305,6 @@ export type PrivateYou = {
   freeTier: number
   premTier: number
   nextTierXp: number | null
-  sub: null | { plan: "trial" | "month" | "year" }
   townIds: string[]
 }
 

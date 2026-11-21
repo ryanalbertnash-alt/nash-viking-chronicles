@@ -162,10 +162,7 @@ export const OFFERS = [
   { sku: "pack-2400", name: "2,400 Nash Points", kind: "pack" as const, np: 2400, usd: 22.99, blurb: "A war chest. A rare weapon, or a skin and a ship." },
   { sku: "pack-4500", name: "4,500 Nash Points", kind: "pack" as const, np: 4500, usd: 36.99, blurb: "Enough for a longship and a cloak." },
   { sku: "pack-12500", name: "12,500 Nash Points", kind: "pack" as const, np: 12500, usd: 89.99, blurb: "The jarl's hoard. The whole armory notices." },
-  { sku: "battle-pass", name: "Seaway Battle Pass", kind: "pass" as const, np: 800, usd: 0, blurb: "Premium track for this moon. Free track stays free." },
-  { sku: "sub-trial", name: "Oath of the Road", kind: "sub" as const, plan: "trial" as const, np: 200, usd: 0, blurb: "First month free. In the App Store this becomes $10 a month or $120 a year." },
-  { sku: "sub-month", name: "Monthly oath", kind: "sub" as const, plan: "month" as const, np: 200, usd: 10, blurb: "Demo of the $10 monthly oath. Nothing is charged." },
-  { sku: "sub-year", name: "Yearly oath", kind: "sub" as const, plan: "year" as const, np: 400, usd: 120, blurb: "Demo of the $120 yearly oath. Nothing is charged." },
+  { sku: "battle-pass", name: "Seaway Battle Pass", kind: "pass" as const, np: 800, usd: 0, blurb: "Optional extra track. Playing already pays the free track." },
 ]
 
 export const START_TOWNS = ["chesterville", "morrisburg", "cornwall"] as const

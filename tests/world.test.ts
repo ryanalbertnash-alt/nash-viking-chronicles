@@ -84,6 +84,8 @@ export async function runWorld() {
 
   const broke = game.buy(a.playerId!, "gold-wing-valkyrie")
   assert(broke.error, "cannot afford skin yet")
+  const oath = game.buy(a.playerId!, "sub-month")
+  assert(oath.error?.includes("free"), oath.error ?? "subscription must be gone")
   const pack = game.buy(a.playerId!, "pack-2400")
   assert(pack.event?.text.includes("Nothing was charged"), "demo pack")
   const skin = game.buy(a.playerId!, "gold-wing-valkyrie")

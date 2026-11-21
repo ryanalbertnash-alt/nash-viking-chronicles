@@ -21,7 +21,7 @@ Open [http://127.0.0.1:4477](http://127.0.0.1:4477). On a phone, use the compute
 6. Say **Hey Valhalla**, then a command: attack, recruit, claim town, status, heal, raid, build the hall, ride on, pull over. In Chrome this can listen hands-free. Safari on iPhone often cannot hear; speech *out* still works, and Passenger Mode opens the buttons.
 7. Above 10 km/h the tap menus lock. That is on purpose. Ontario does not allow a driver to hold a phone. A passenger can flip **Passenger Mode**. Long-press the rune to pull over.
 8. Parked, a fight shows each blow. While the wheels turn, you only get the spoken report.
-9. The hoard sells skins, weapons, longships, and draughts for Nash Points. **Every purchase in this prototype is a demo. Nothing is charged.**
+9. The game is free. Skins, weapons, draughts, the Battle Pass, and Nash Points are optional extras. Nobody has to buy anything to claim a town, recruit, or fight. **This demo charges nothing.**
 10. Search a destination, or say “Hey Valhalla, navigate to Ottawa.” The route is a real road, with spoken turns, an ETA, and a reroute if you leave it. Say “Hey Valhalla, police” (or construction, crash, hazard, pothole, traffic, road closed, weather, ice, fog, animal, camera). The warband hears an evil wizard, a fortress wall, a chariot wreck, a marching army, and the rest, and the small line under the icon always says what it really is. Gas stations are trading posts. Other drivers on the road are longships and rival warbands. Confirm with “still there” or “not there.” Reports pay gold and seer fame. The speed shows the usual Ontario limit for that kind of road. You cannot type a search while the car is moving.
 
 ## Two players
@@ -68,7 +68,7 @@ npm run build
 npx cap add ios
 ```
 
-The socket uses the page host, so a wrapped app needs the game server reachable at a public URL (set the dev server URL in Capacitor's `server.url` while testing). Real Nash Points and the oath (first month free, then $10 a month or $120 a year) belong to Apple In-App Purchase in that build. This prototype does not take payment.
+The socket uses the page host, so a wrapped app needs the game server reachable at a public URL (set the dev server URL in Capacitor's `server.url` while testing). The game stays free. There is no subscription. Optional Nash Points, if they are ever sold, would go through Apple. This build does not take payment.
 
 ## Map and roads
 
