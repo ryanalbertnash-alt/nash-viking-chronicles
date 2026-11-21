@@ -25,6 +25,10 @@ Character lines and the driving narrator are generated with [eSpeak NG](https://
 
 Each of the 24 champions has five lines: recruit, battle cry, victory, defeat, and low health.
 
+## Battle figures
+
+The fighters in a siege are original low-poly figures made for this game. Each one is a rigged body: head, helm, beard or tusks, fur cloak, mail, shield, and a weapon. Colors follow that champion's painting. They are not taken from another game. The grass, rocks, trees, and palisade on the field are original too.
+
 ## Sound effects
 
 These recordings are from Kenney's CC0 packs (public domain, no credit required; credit is given anyway):
