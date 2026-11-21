@@ -1,8 +1,0 @@
-{
-  "appId": "com.nash.vikingchronicles",
-  "appName": "Nash's Viking Chronicles",
-  "webDir": "dist",
-  "server": {
-    "androidScheme": "https"
-  }
-}

@@ -7,6 +7,9 @@ import { RECIPES, UNIT_INFO, UNIT_ORDER, championClass, companyUnlock, unitName,
 import { BUILDINGS, OFFERS, PASS_TIERS, TOWN_POWER, champions, itemById, itemPrice, items, monthlyShop } from "@/shared/catalog.ts"
 import { driveRoutes } from "@/shared/routes.ts"
 import { formatMeters, haversine } from "@/shared/geo.ts"
+import { purchasePointPack } from "@/iap.ts"
+import { apiUrl, isNativeApp } from "@/native.ts"
+import { POINT_PACKS, productId } from "@/shared/app.ts"
 import type { BattleResult, BuildingId, PrivateYou, PublicPlayer, PublicTown, PublicWorld, Stance } from "@/shared/types.ts"
 
 type Send = (msg: unknown) => void
@@ -205,6 +208,8 @@ export function ShopPanel({ you, send, onClose }: { you: PrivateYou; send: Send;
   const shop = monthlyShop()
   const [tab, setTab] = useState<"moon" | "armory" | "points">("moon")
   const [sku, setSku] = useState<string | null>(null)
+  const [storeNote, setStoreNote] = useState("")
+  const native = isNativeApp()
   const offer = OFFERS.find((o) => o.sku === sku)
   const item = sku ? itemById(sku) : undefined
   const price = item ? itemPrice(item.id) : 0
@@ -212,7 +217,9 @@ export function ShopPanel({ you, send, onClose }: { you: PrivateYou; send: Send;
   const list = tab === "moon" ? [...featured, ...items.filter((i) => i.kind === "potion")] : items
   return (
     <Sheet title="The hoard" onClose={onClose}>
-      <div className="demo-flag">The game is free. Skins, weapons, draughts, the Battle Pass, and Nash Points are optional extras. You can claim towns, recruit, and fight without buying any of them. This demo charges nothing. Shelf prices, if a player wants points later: 800 NP $8.99, 2,400 NP $22.99, 4,500 NP $36.99, 12,500 NP $89.99.</div>
+      <div className="demo-flag">{native
+        ? "The game is free. Towns, recruits, and fights do not need Nash Points. Points are an optional App Store purchase."
+        : "The game is free. Skins, weapons, draughts, the Battle Pass, and Nash Points are optional extras. You can claim towns, recruit, and fight without buying any of them. This website charges nothing. Shelf prices, if a player wants points later: 500 NP $4.99, 1,000 NP $8.99, 2,800 NP $22.99, 5,000 NP $36.99, 13,500 NP $89.99."}</div>
       <p className="fine">You hold {you.np} Nash Points. Moon of {shop.label}. Next rotation {shop.nextLabel}. Featured pieces are 20% off.</p>
       <div className="tabs">
         <Button size="sm" variant={tab === "moon" ? "default" : "outline"} onClick={() => setTab("moon")}>This moon</Button>
@@ -243,7 +250,22 @@ export function ShopPanel({ you, send, onClose }: { you: PrivateYou; send: Send;
             <div className="pips">{PASS_TIERS.map((tier, i) => <i key={tier.xp} className={i < you.freeTier ? "on" : ""} />)}</div>
             {!you.pass && <Button onClick={() => setSku("battle-pass")}>Optional pass · 800 NP</Button>}
           </article>
-          {OFFERS.filter((o) => o.kind === "pack").map((o) => (
+          {storeNote && <p className="warn">{storeNote}</p>}
+          {native ? POINT_PACKS.map((pack) => (
+            <article key={pack.suffix} className="card">
+              <h3>{pack.np.toLocaleString("en-US")} Nash Points</h3>
+              <p className="fine">{pack.blurb} App Store price ${pack.usd.toFixed(2)} US.</p>
+              <Button size="sm" variant="secondary" onClick={() => {
+                const id = productId(pack.suffix)
+                setStoreNote("")
+                void purchasePointPack(id).then((tx) => {
+                  send({ t: "do", action: "iap", productId: id, transactionId: tx.transactionId })
+                }).catch((err: unknown) => {
+                  setStoreNote(err instanceof Error ? err.message : "The App Store did not finish that purchase.")
+                })
+              }}>Buy · ${pack.usd.toFixed(2)}</Button>
+            </article>
+          )) : OFFERS.filter((o) => o.kind === "pack").map((o) => (
             <article key={o.sku} className="card">
               <h3>{o.name}</h3>
               <p className="fine">{o.blurb}</p>
@@ -425,7 +447,7 @@ function MoveHall({ send }: { send: Send }) {
   const [q, setQ] = useState("")
   const [hits, setHits] = useState<{ id?: string; name: string }[]>([])
   return (
-    <form className="stack" onSubmit={(e) => { e.preventDefault(); void fetch(`/api/geocode?q=${encodeURIComponent(q)}`).then((r) => r.json()).then((rows) => setHits(rows as { id?: string; name: string }[])) }}>
+    <form className="stack" onSubmit={(e) => { e.preventDefault(); void fetch(apiUrl(`/api/geocode?q=${encodeURIComponent(q)}`)).then((r) => r.json()).then((rows) => setHits(rows as { id?: string; name: string }[])) }}>
       <p className="fine">Move the hall once a month.</p>
       <input className="name-field" value={q} onChange={(e) => setQ(e.target.value)} placeholder="A new town" />
       <Button type="submit" size="sm" variant="outline">Search</Button>

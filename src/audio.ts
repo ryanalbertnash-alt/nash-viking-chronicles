@@ -1,3 +1,5 @@
+import { apiUrl } from "@/native.ts"
+
 const file = (path: string) => `${import.meta.env.BASE_URL}${path}`
 
 export type SfxName = "clash" | "sword" | "axe" | "shield" | "horn" | "drums" | "roar" | "oars" | "coins" | "drink" | "bell" | "arrow"
@@ -154,7 +156,7 @@ export async function narrate(text: string): Promise<void> {
   ducked = true
   applyMusic()
   try {
-    const res = await fetch("/api/narrate", {
+    const res = await fetch(apiUrl("/api/narrate"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: text.slice(0, 420) }),

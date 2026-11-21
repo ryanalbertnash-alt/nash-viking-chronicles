@@ -16,6 +16,7 @@ import {
   towns,
   warbandCap,
 } from "../src/shared/catalog.ts"
+import { pointPackById } from "../src/shared/app.ts"
 import { MOVE_COOLDOWN_MS, RIVAL_METERS, WELCOME_GOLD, freshQuests, idlePurse, idleRate, marchSeconds, questDay } from "../src/shared/hearth.ts"
 import { formatMeters, haversine, homeSpot, nearestOnLine, offsetMeters, pointAlong, routeLength } from "../src/shared/geo.ts"
 import { nearestPlace, resolveTown as townById } from "./places.ts"
@@ -141,6 +142,7 @@ export function normalize(state: GameState): GameState {
     if (typeof p.roadDriving !== "boolean") p.roadDriving = false
     if (typeof p.roadQuest !== "number") p.roadQuest = 0
     if (!Array.isArray(p.notices)) p.notices = []
+    if (!Array.isArray(p.iap)) p.iap = []
     delete (p as { sub?: unknown }).sub
   }
   return state
@@ -601,6 +603,21 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     p.tribute[town.id] = now
     p.gold += gain
     return { event: event(`${town.name} pays ${gain} gold in tribute.`, "good") }
+  }
+
+  function grantIap(playerId: string, productId: string, transactionId: string): ActionResult {
+    const p = mustHuman(playerId)
+    if ("error" in p) return p
+    const pack = pointPackById(productId)
+    if (!pack) return { error: "That pack is not in the hoard." }
+    const tx = transactionId.trim()
+    if (tx.length < 6) return { error: "The App Store receipt was empty." }
+    if (!p.iap) p.iap = []
+    if (p.iap.includes(tx)) return { event: event("Those Nash Points are already in the hall.", "info") }
+    p.iap.push(tx)
+    if (p.iap.length > 40) p.iap = p.iap.slice(-40)
+    p.np += pack.np
+    return { event: event(`The App Store added ${pack.np} Nash Points.`, "good") }
   }
 
   function fileReport(playerId: string, type: ReportType): ActionResult {
@@ -1673,6 +1690,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     tribute,
     fileReport,
     confirmReport,
+    grantIap,
     march,
     collectIdle,
     befriend,
@@ -1759,6 +1777,7 @@ function blankPlayer(partial: Partial<Player> & { id: string; name: string }): P
     roadDriving: partial.roadDriving ?? false,
     roadQuest: partial.roadQuest ?? 0,
     notices: partial.notices ?? [],
+    iap: partial.iap ?? [],
   }
 }
 

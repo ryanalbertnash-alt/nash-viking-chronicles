@@ -7,6 +7,7 @@ const gl = maplibregl as unknown as { setWorkerUrl?: (url: string) => void; work
 if (typeof gl.setWorkerUrl === "function") gl.setWorkerUrl(workerUrl)
 else gl.workerUrl = workerUrl
 import { asset } from "@/art"
+import { apiUrl } from "@/native.ts"
 import { haversine } from "@/shared/geo.ts"
 import { TRADING_POSTS } from "@/shared/posts.ts"
 import { REPORT_INFO } from "@/shared/reports.ts"
@@ -64,7 +65,7 @@ export function WarMap({
       if (!m.getBounds()) return
       const b = m.getBounds()
       const q = `south=${b.getSouth()}&west=${b.getWest()}&north=${b.getNorth()}&east=${b.getEast()}`
-      void fetch(`/api/places?${q}`).then((r) => (r.ok ? r.json() : [])).then((rows: PublicTown[]) => {
+      void fetch(apiUrl(`/api/places?${q}`)).then((r) => (r.ok ? r.json() : [])).then((rows: PublicTown[]) => {
         cb.current.onPlaces?.(Array.isArray(rows) ? rows : [])
       }).catch(() => {})
     }

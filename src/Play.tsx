@@ -19,6 +19,7 @@ import { nearestPost, postById, postSpeech, TRADING_POSTS } from "@/shared/posts
 import { REPORT_INFO, REPORT_TYPES, reportSpeech } from "@/shared/reports.ts"
 import type { NavPlan } from "@/shared/nav.ts"
 import { matchName, parseCommand } from "@/shared/voice.ts"
+import { apiUrl, isNativeApp } from "@/native.ts"
 import { useSession } from "@/session"
 import { canListen, listenOnce, onCaption, setVoiceFaction, speak, startAmbient, unlockSpeech } from "@/speech"
 
@@ -253,7 +254,7 @@ function Board({
       asked.at = Date.now()
       asked.lat = here.lat
       asked.lng = here.lng
-      void fetch(`/api/road?lat=${here.lat}&lng=${here.lng}`)
+      void fetch(apiUrl(`/api/road?lat=${here.lat}&lng=${here.lng}`))
         .then((r) => (r.ok ? r.json() : null))
         .then((row: { limit?: number } | null) => {
           if (row && typeof row.limit === "number") setRoadLimit(row.limit)
@@ -394,7 +395,7 @@ function Board({
   }
 
   async function beginNav(target: string) {
-    const res = await fetch(`/api/geocode?q=${encodeURIComponent(target)}`)
+    const res = await fetch(apiUrl(`/api/geocode?q=${encodeURIComponent(target)}`))
     const places = (await res.json()) as { name: string; lat: number; lng: number }[]
     const place = places[0]
     if (!place) { speak(`I cannot find ${target}.`, true); return }
@@ -403,7 +404,7 @@ function Board({
 
   async function followNav(label: string, lat: number, lng: number) {
     const here = posRef.current
-    const res = await fetch(`/api/route?flat=${here.lat}&flng=${here.lng}&tlat=${lat}&tlng=${lng}&label=${encodeURIComponent(label)}`)
+    const res = await fetch(apiUrl(`/api/route?flat=${here.lat}&flng=${here.lng}&tlat=${lat}&tlng=${lng}&label=${encodeURIComponent(label)}`))
     if (!res.ok) { speak("The road-finder did not answer.", true); return }
     const plan = (await res.json()) as NavPlan
     said.current.clear()
@@ -694,12 +695,19 @@ function Board({
             onClose={() => setSheet(null)}
             onRoute={(id) => { setRouteId(id); const road = driveRoutes.find((r) => r.id === id)!; const proj = projectRoute(road.coordinates, posRef.current.lat, posRef.current.lng); sim.current.distance = proj.along }}
             onScale={setScale}
-            onGps={() => { setGps(true); sim.current.playing = false; speedRef.current = 0; setSpeed(0); speak("Listening for the real road.", true) }}
+            onGps={() => {
+              setGps(true)
+              sim.current.playing = false
+              speedRef.current = 0
+              setSpeed(0)
+              if (isNativeApp()) void import("@capacitor/geolocation").then(({ Geolocation }) => Geolocation.requestPermissions()).catch(() => {})
+              speak("Listening for the real road.", true)
+            }}
             onRide={() => { setGps(false); ride() }}
             query={query}
             hits={hits}
             onQuery={setQuery}
-            onSearch={() => { void fetch(`/api/geocode?q=${encodeURIComponent(query)}`).then((r) => r.json()).then((rows) => setHits(rows as { name: string; lat: number; lng: number }[])) }}
+            onSearch={() => { void fetch(apiUrl(`/api/geocode?q=${encodeURIComponent(query)}`)).then((r) => r.json()).then((rows) => setHits(rows as { name: string; lat: number; lng: number }[])) }}
             onPick={(hit) => { setSheet(null); void followNav(hit.name, hit.lat, hit.lng) }}
           />
         )}

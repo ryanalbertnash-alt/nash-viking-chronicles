@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { START_TOWNS, townById } from "@/shared/catalog.ts"
 import type { Faction } from "@/shared/types.ts"
+import { apiUrl } from "@/native.ts"
 import { useSession } from "@/session"
 import { unlockMusic } from "@/audio"
 import { unlockSpeech } from "@/speech"
@@ -106,7 +107,7 @@ export function Gates() {
         {phase === "faction" && clan && (
           <form className="stack" onSubmit={(e) => {
             e.preventDefault()
-            void fetch(`/api/geocode?q=${encodeURIComponent(query)}`).then((r) => r.json()).then((rows) => setHits(rows as { id?: string; name: string; lat: number; lng: number }[]))
+            void fetch(apiUrl(`/api/geocode?q=${encodeURIComponent(query)}`)).then((r) => r.json()).then((rows) => setHits(rows as { id?: string; name: string; lat: number; lng: number }[]))
           }}>
             <p className="fine">Where is your hall? Use this phone, or search any city, town, or village in Canada or the United States.</p>
             <div className="starts">
@@ -119,7 +120,7 @@ export function Gates() {
                 unlock()
                 if (!navigator.geolocation) { setNote("This phone will not share a location. Search for your town."); return }
                 navigator.geolocation.getCurrentPosition(async (pos) => {
-                  const res = await fetch(`/api/nearest?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`)
+                  const res = await fetch(apiUrl(`/api/nearest?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`))
                   const place = await res.json() as { id?: string; name?: string; lat?: number; lng?: number } | null
                   if (!place?.name || place.lat == null || place.lng == null) { setNote("No town in Canada or the United States is close. Search for yours."); return }
                   setHome({ id: place.id, name: place.name, lat: place.lat, lng: place.lng })

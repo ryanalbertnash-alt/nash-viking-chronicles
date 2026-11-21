@@ -1,0 +1,2 @@
+# The lane reads the bundle id from src/shared/app.ts. This file is a fallback for fastlane tools.
+app_identifier("com.nash.vikingchronicles")

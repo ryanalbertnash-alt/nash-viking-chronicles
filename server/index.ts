@@ -12,6 +12,7 @@ import { createGame, freshState, normalize } from "./world.ts"
 import { buildRoute, roadAt, searchPlaces } from "./route.ts"
 import { nearestPlace, placesInBbox, placeById } from "./places.ts"
 import { REPORT_TYPES, type ReportType } from "../src/shared/reports.ts"
+import { privacyPage, supportPage } from "./legal.ts"
 
 type Client = { ws: WebSocket; playerId: string | null }
 
@@ -22,6 +23,31 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
   const state = loadState(dataFile)
   const game = createGame(state)
   const app = express()
+  app.use((req, res, next) => {
+    const origin = req.header("origin") ?? ""
+    const allowed = origin === "https://nash-viking-chronicles.onrender.com"
+      || origin === "capacitor://localhost"
+      || origin === "ionic://localhost"
+      || origin === "https://localhost"
+      || origin === "http://localhost"
+    if (allowed) {
+      res.setHeader("Access-Control-Allow-Origin", origin)
+      res.setHeader("Vary", "Origin")
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type")
+    }
+    if (req.method === "OPTIONS") {
+      res.sendStatus(204)
+      return
+    }
+    next()
+  })
+  app.get(["/privacy", "/privacy/"], (_req, res) => {
+    res.type("html").send(privacyPage())
+  })
+  app.get(["/support", "/support/"], (_req, res) => {
+    res.type("html").send(supportPage())
+  })
   const httpServer = createServer(app)
   const clients = new Set<Client>()
   let saveTimer: NodeJS.Timeout | undefined
@@ -314,6 +340,7 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
     if (action === "warband") return game.setWarband(id, Array.isArray(msg.ids) ? msg.ids.map(String) : [])
     if (action === "potion") return game.drinkPotion(id, String(msg.itemId ?? ""))
     if (action === "buy") return game.buy(id, String(msg.sku ?? ""))
+    if (action === "iap") return game.grantIap(id, String(msg.productId ?? ""), String(msg.transactionId ?? ""))
     if (action === "rest") return game.rest(id)
     if (action === "restock") return game.restock(id)
     if (action === "tribute") return game.tribute(id, String(msg.townId ?? ""))

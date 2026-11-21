@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { socketUrl } from "@/native.ts"
 import type { BattleResult, GameEvent, PrivateYou, PublicShip, PublicWorld } from "@/shared/types.ts"
 
 type Feed = { n: number; result?: BattleResult; event?: GameEvent; error?: string }
@@ -48,8 +49,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let timer = 0
     const connect = () => {
       if (stopped) return
-      const proto = location.protocol === "https:" ? "wss" : "ws"
-      const ws = new WebSocket(`${proto}://${location.host}/ws`)
+      const ws = new WebSocket(socketUrl())
       wsRef.current = ws
       ws.onopen = () => {
         setLink("live")

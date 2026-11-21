@@ -175,6 +175,7 @@ export type Player = {
   roadDriving: boolean
   roadQuest: number
   notices: { text: string; tone: "good" | "bad" | "info" }[]
+  iap: string[]
 }
 
 export type TownState = { id: string; ownerId: string | null }
