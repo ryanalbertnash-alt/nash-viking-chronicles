@@ -8,6 +8,7 @@ if (typeof gl.setWorkerUrl === "function") gl.setWorkerUrl(workerUrl)
 else gl.workerUrl = workerUrl
 import { asset } from "@/art"
 import { haversine } from "@/shared/geo.ts"
+import { REPORT_INFO } from "@/shared/reports.ts"
 import type { PrivateYou, PublicWorld } from "@/shared/types.ts"
 
 const style = {
@@ -36,6 +37,7 @@ export function WarMap({
   locked,
   onTown,
   onHall,
+  onReport,
   onFree,
 }: {
   you: PrivateYou
@@ -48,14 +50,15 @@ export function WarMap({
   locked: boolean
   onTown: (id: string) => void
   onHall: (id: string) => void
+  onReport: (id: string) => void
   onFree: () => void
 }) {
   const host = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const marks = useRef(new Map<string, maplibregl.Marker>())
   const [booted, setBooted] = useState(false)
-  const cb = useRef({ onTown, onHall, onFree, locked })
-  cb.current = { onTown, onHall, onFree, locked }
+  const cb = useRef({ onTown, onHall, onReport, onFree, locked })
+  cb.current = { onTown, onHall, onReport, onFree, locked }
   const posRef = useRef(pos)
   posRef.current = pos
 
@@ -146,6 +149,12 @@ export function WarMap({
       const node = nodeOf(`<div class="pin ${faction} ${mine ? "mine" : ""}" data-sig="${faction}:${mine}:${town.name}"><div class="label">${escapeHtml(town.name)}</div><div class="dot"></div></div>`)
       node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onTown(town.id) })
       put(`town:${town.id}`, town.lng, town.lat, node, "bottom")
+    }
+    for (const report of world.reports) {
+      const info = REPORT_INFO[report.type]
+      const node = nodeOf(`<div class="pin report ${report.type}" data-sig="${report.type}:${report.still.length}:${report.gone.length}"><div class="label">${escapeHtml(info.label)} · ${escapeHtml(info.theme)}</div><div class="dot"></div></div>`)
+      node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onReport(report.id) })
+      put(`report:${report.id}`, report.lng, report.lat, node, "bottom")
     }
     for (const p of world.players) {
       if (!p.faction) continue

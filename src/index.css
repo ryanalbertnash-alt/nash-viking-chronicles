@@ -374,6 +374,13 @@ select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b
   white-space: nowrap;
 }
 .map-far .label { display: none; }
+.map-far .pin.report .label { display: inline; }
+.pin.report .dot { background: #e2c07a; }
+.pin.report.police .dot, .pin.report.camera .dot, .pin.report.redlight .dot { background: #c45a32; }
+.pin.report.construction .dot, .pin.report.closed .dot { background: #8a7040; }
+.pin.report.crash .dot, .pin.report.hazard .dot { background: #8e2d24; }
+.over-limit strong { color: #e07060; }
+.volume { width: 72px; accent-color: var(--gold); }
 .puck { width: 28px; height: 28px; display: grid; place-items: center; }
 .puck i {
   width: 0; height: 0;

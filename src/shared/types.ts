@@ -1,3 +1,5 @@
+import type { RoadReport } from "./reports.ts"
+
 export type Faction = "viking" | "grog"
 export type TownKind = "hamlet" | "village" | "town" | "city"
 export type ItemKind = "skin" | "weapon" | "longship" | "potion"
@@ -115,6 +117,7 @@ export type Player = {
   wins: number
   losses: number
   raids: number
+  scouts: number
   seasonXp: number
   pass: boolean
   freeTier: number
@@ -150,6 +153,7 @@ export type GameState = {
   saga: SagaLine[]
   flavorAt: number
   economyAt: number
+  reports: RoadReport[]
 }
 
 export type ChampView = {
@@ -243,6 +247,7 @@ export type Board = {
   towns: { name: string; faction: Faction | null; count: number }[]
   richest: { name: string; faction: Faction | null; worth: number }[]
   raids: { name: string; faction: Faction | null; raids: number }[]
+  scouts: { name: string; faction: Faction | null; scouts: number }[]
 }
 
 export type PublicWorld = {
@@ -250,6 +255,7 @@ export type PublicWorld = {
   players: PublicPlayer[]
   ships: PublicShip[]
   saga: { id: string; text: string }[]
+  reports: RoadReport[]
   board: Board
   season: string
 }
@@ -294,6 +300,7 @@ export type PrivateYou = {
   wins: number
   losses: number
   raids: number
+  scouts: number
   seasonXp: number
   pass: boolean
   freeTier: number

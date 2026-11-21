@@ -1,3 +1,4 @@
+import type { ReportType } from "./reports.ts"
 import type { Stance } from "./types.ts"
 
 export type VoiceCommand =
@@ -20,6 +21,9 @@ export type VoiceCommand =
   | { type: "center" }
   | { type: "rest" }
   | { type: "attack"; stance: Stance; target?: string }
+  | { type: "road"; kind: ReportType }
+  | { type: "navigate"; target: string }
+  | { type: "confirm"; still: boolean }
   | { type: "unknown"; heard: string }
 
 export function normalizeSpeech(raw: string): string {
@@ -49,6 +53,14 @@ export function parseCommand(raw: string, requireWake: boolean): VoiceCommand | 
 }
 
 function parseBody(s: string): VoiceCommand {
+  const road = roadKind(s)
+  if (road) return { type: "road", kind: road }
+  if (/\bstill there\b|\byes still\b/.test(s)) return { type: "confirm", still: true }
+  if (/\bnot there\b|\bit'?s gone\b|\bno longer there\b/.test(s)) return { type: "confirm", still: false }
+  if (/\b(navigate|directions|take me)\b/.test(s)) {
+    const target = s.replace(/.*\b(?:navigate|directions|take me)\b/, "").replace(/\b(to|towards|toward)\b/g, " ").trim()
+    if (target) return { type: "navigate", target }
+  }
   if (/passenger/.test(s) && /\b(off|stop|end|disable)\b/.test(s)) return { type: "passenger", on: false }
   if (/\bpassenger\b/.test(s)) return { type: "passenger", on: true }
   if (/\bpull over\b|\bpark\b|\bwhoa\b|\bhold up\b|^stop$|\bpull up\b/.test(s)) return { type: "hold" }
@@ -88,6 +100,22 @@ function parseBody(s: string): VoiceCommand {
     return { type: "attack", stance, target: tail(s, /attack|fight|smash|charge|battle|plunder|sack/) }
   }
   return { type: "unknown", heard: s }
+}
+
+function roadKind(s: string): ReportType | null {
+  if (/\bred light\b|\bred-light\b/.test(s)) return "redlight"
+  if (/\bspeed camera\b|\bcamera\b/.test(s)) return "camera"
+  if (/\bcrash\b|\baccident\b|\bcollision\b/.test(s)) return "crash"
+  if (/\bconstruction\b|\broadwork\b|\bwork zone\b/.test(s)) return "construction"
+  if (/\bpolice\b|\bcop\b|\brcmp\b|\bopp\b/.test(s)) return "police"
+  if (/\bpothole\b/.test(s)) return "pothole"
+  if (/\btraffic jam\b|\bjam\b|\btraffic\b/.test(s)) return "jam"
+  if (/\broad closed\b|\bclosed road\b|\bclosure\b/.test(s)) return "closed"
+  if (/\bweather\b|\bice\b|\bflood\b|\bsnow\b/.test(s)) return "weather"
+  if (/\bstopped (vehicle|car|truck)\b/.test(s)) return "stopped"
+  if (/\bobject\b|\bdebris\b/.test(s)) return "object"
+  if (/\bhazard\b/.test(s)) return "hazard"
+  return null
 }
 
 function tail(s: string, re: RegExp): string | undefined {

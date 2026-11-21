@@ -3,19 +3,21 @@ import { Volume2, VolumeX } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
-import { setMusicBattle, setMusicFaction, setMusicMuted, unlockMusic } from "@/audio"
-import { BattleView, HallPanel, RoadsPanel, SagaPanel, ShopPanel, TownPanel, WarbandPanel } from "@/Panels"
+import { narrate, playSfx, playSting, playVoice, setDrivingAudio, setMusicBattle, setMusicFaction, setMusicLevel, setMusicMuted, unlockMusic } from "@/audio"
+import { BattleView, HallPanel, RoadsPanel, SagaPanel, Sheet, ShopPanel, TownPanel, WarbandPanel } from "@/Panels"
 import { WarMap } from "@/WarMap"
-import { LOCK_KMH, itemById } from "@/shared/catalog.ts"
+import { LOCK_KMH, champions, itemById } from "@/shared/catalog.ts"
 import { formatMeters, haversine, pointAlong, projectRoute, routeLength } from "@/shared/geo.ts"
 import { driveRoutes, riverRoute } from "@/shared/routes.ts"
 import type { PublicPlayer, PublicTown, Stance } from "@/shared/types.ts"
 import type { VoiceCommand } from "@/shared/voice.ts"
+import { REPORT_INFO, REPORT_TYPES, reportSpeech } from "@/shared/reports.ts"
+import type { NavPlan } from "@/shared/nav.ts"
 import { matchName, parseCommand } from "@/shared/voice.ts"
 import { useSession } from "@/session"
 import { canListen, listenOnce, onCaption, setVoiceFaction, speak, startAmbient, unlockSpeech } from "@/speech"
 
-type Sheet = null | { kind: "town" | "hall" | "warband" | "shop" | "saga" | "roads"; id?: string }
+type Sheet = null | { kind: "town" | "hall" | "warband" | "shop" | "saga" | "roads" | "report"; id?: string }
 type Pending = { kind: "town" | "player"; id: string; action: "claim" | "attackTown" | "attackPlayer" }
 
 export function Play() {
@@ -47,6 +49,19 @@ function Board({
   const [gps, setGps] = useState(false)
   const [routeId, setRouteId] = useState("heartland")
   const [scale, setScale] = useState(10)
+  const [nav, setNav] = useState<NavPlan | null>(null)
+  const [query, setQuery] = useState("")
+  const [hits, setHits] = useState<{ name: string; lat: number; lng: number }[]>([])
+  const [level, setLevel] = useState(70)
+  const [roadLimit, setRoadLimit] = useState<number | null>(null)
+  const roadLimitRef = useRef<number | null>(null)
+  roadLimitRef.current = roadLimit
+  const navRef = useRef<NavPlan | null>(null)
+  navRef.current = nav
+  const said = useRef(new Set<string>())
+  const limitWarned = useRef("")
+  const offRoute = useRef(0)
+  const guideRef = useRef<(here: { lat: number; lng: number; heading: number }, speedKmh: number) => void>(() => {})
   const sim = useRef({ playing: false, distance: 0, dir: 1 as 1 | -1, speed: 72, stopped: new Set<string>(), ready: false })
   const posRef = useRef(pos)
   posRef.current = pos
@@ -108,12 +123,39 @@ function Board({
     const text = feed.result?.summary || feed.error || feed.event?.speech
     if (!text) return
     setCaption(text)
-    speak(text, true)
-    if (feed.result) {
+    const result = feed.result
+    if (result) {
+      const tactical = speedRef.current <= LOCK_KMH || passRef.current
       setMusicBattle(true)
-      window.setTimeout(() => setMusicBattle(false), 9000)
-      if (speedRef.current <= LOCK_KMH || passRef.current) setBattle(feed.result)
+      playSfx("horn")
+      if (youRef.current.faction === "grog") playSfx("roar")
+      const lead = youRef.current.warband[0]
+      if (tactical) {
+        if (lead) void playVoice(lead, "cry")
+        setBattle(result)
+      } else {
+        void (async () => {
+          if (lead) await playVoice(lead, "cry")
+          playSfx(result.win ? "clash" : "shield")
+          await narrate(result.summary)
+          playSting(result.win)
+          if (lead) await playVoice(lead, result.win ? "victory" : "defeat")
+          const hurt = youRef.current.champions.find((c) => youRef.current.warband.includes(c.id) && c.hp / c.maxHp < 0.35)
+          if (hurt) await playVoice(hurt.id, "low")
+          if (result.gold > 0) playSfx("coins")
+        })()
+      }
+      return
     }
+    const joined = champions.find((c) => text.startsWith(c.name) && text.includes("joins"))
+    if (joined) {
+      void playVoice(joined.id, "recruit")
+      return
+    }
+    if (/draught|poultice|mends/i.test(text)) playSfx("drink")
+    if (/longship|turns for/i.test(text)) playSfx("oars")
+    if (/gold/i.test(text)) playSfx("coins")
+    speak(text, true)
   }, [feed])
 
   useEffect(() => {
@@ -123,23 +165,27 @@ function Board({
       const dt = Math.min(0.4, (now - last) / 1000)
       last = now
       if (gpsRef.current || !sim.current.playing) return
-      const road = driveRoutes.find((r) => r.id === routeRef.current) ?? driveRoutes[0]
-      const len = routeLength(road.coordinates)
+      const roadCoords = navRef.current?.coords ?? (driveRoutes.find((r) => r.id === routeRef.current) ?? driveRoutes[0]).coordinates
+      const len = routeLength(roadCoords)
       sim.current.distance += (sim.current.speed / 3.6) * dt * scaleRef.current * sim.current.dir
       if (sim.current.distance >= len - 25 || sim.current.distance <= 20) {
         sim.current.playing = false
         speedRef.current = 0
         setSpeed(0)
-        speak("The road ends. Say turn around, or pick another.", true)
+        setDrivingAudio(false)
+        speak(navRef.current ? `You have arrived at ${navRef.current.label}.` : "The road ends. Say turn around, or pick another.", true)
+        if (navRef.current) setNav(null)
         return
       }
-      const p = pointAlong(road.coordinates, sim.current.distance)
+      const p = pointAlong(roadCoords, sim.current.distance)
       const heading = sim.current.dir === 1 ? p.heading : (p.heading + 180) % 360
       const next = { lat: p.lat, lng: p.lng, heading }
       posRef.current = next
       speedRef.current = sim.current.speed
       setPos(next)
       setSpeed(sim.current.speed)
+      setDrivingAudio(sim.current.speed > LOCK_KMH)
+      guideRef.current(next, sim.current.speed)
       for (const town of worldRef.current.towns) {
         const dist = haversine(next, town)
         if (dist < 680 && !sim.current.stopped.has(town.id)) {
@@ -147,6 +193,7 @@ function Board({
           sim.current.playing = false
           speedRef.current = 0
           setSpeed(0)
+          setDrivingAudio(false)
           setPos(next)
           const holder = town.ownerName ? `${town.ownerName} holds it.` : "It is unclaimed."
           const who = town.guardianName && town.guardianFree ? ` ${town.guardianName} is here.` : ""
@@ -164,6 +211,26 @@ function Board({
   }, [send])
 
   useEffect(() => {
+    const asked = { at: 0, lat: 0, lng: 0 }
+    const id = window.setInterval(() => {
+      if (navRef.current || speedRef.current < 8) return
+      const here = posRef.current
+      if (Date.now() - asked.at < 20000) return
+      if (asked.at && haversine(here, asked) < 180) return
+      asked.at = Date.now()
+      asked.lat = here.lat
+      asked.lng = here.lng
+      void fetch(`/api/road?lat=${here.lat}&lng=${here.lng}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((row: { limit?: number } | null) => {
+          if (row && typeof row.limit === "number") setRoadLimit(row.limit)
+        })
+        .catch(() => {})
+    }, 5000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  useEffect(() => {
     if (!gps) return
     const watch = navigator.geolocation?.watchPosition((fix) => {
       const prev = posRef.current
@@ -174,6 +241,8 @@ function Board({
       speedRef.current = kph
       setPos(next)
       setSpeed(kph)
+      setDrivingAudio(kph > LOCK_KMH)
+      guideRef.current(next, kph)
     }, () => speak("The phone lost the road.", true), { enableHighAccuracy: true, maximumAge: 2000 })
     return () => { if (watch != null) navigator.geolocation.clearWatch(watch) }
   }, [gps])
@@ -186,6 +255,9 @@ function Board({
   }
   function ride() {
     if (gps) { speak("You are already on the real road.", true); return }
+    for (const town of worldRef.current.towns) {
+      if (haversine(posRef.current, town) < 900) sim.current.stopped.add(town.id)
+    }
     const road = driveRoutes.find((r) => r.id === routeRef.current) ?? driveRoutes[0]
     const proj = projectRoute(road.coordinates, posRef.current.lat, posRef.current.lng)
     if (proj.off > 6000) { speak("That road does not reach your hall. Pick another.", true); return }
@@ -212,11 +284,113 @@ function Board({
     else setPending(next)
   }
 
+  guideRef.current = (here, speedKmh) => {
+    const plan = navRef.current
+    const reports = worldRef.current.reports
+    const proj = plan ? projectRoute(plan.coords, here.lat, here.lng) : null
+    if (plan && proj) {
+      if (proj.off > 140) {
+        offRoute.current += 1
+        if (offRoute.current === 10) {
+          offRoute.current = 0
+          void followNav(plan.label, plan.steps.at(-1)?.lat ?? here.lat, plan.steps.at(-1)?.lng ?? here.lng)
+          speak("You left the road. Finding it again.", true)
+        }
+      } else offRoute.current = 0
+      const next = plan.steps.find((s) => s.at > proj.along + 30)
+      if (next) {
+        const dist = next.at - proj.along
+        if (dist < 800 && dist > 140 && !said.current.has(`${next.at}:far`)) {
+          said.current.add(`${next.at}:far`)
+          speak(`${next.say} In ${formatMeters(dist)}.`, true)
+        }
+        if (dist <= 70 && !said.current.has(`${next.at}:now`)) {
+          said.current.add(`${next.at}:now`)
+          speak(next.say, true)
+        }
+      }
+      const on = [...plan.steps].reverse().find((s) => s.at <= proj.along + 10)
+      const cap = on?.limit ?? 50
+      if (speedKmh > cap + 8 && limitWarned.current !== `${on?.road}:${cap}`) {
+        limitWarned.current = `${on?.road}:${cap}`
+        speak(`The usual limit on this road is ${cap}. You are over.`, true)
+      }
+    } else {
+      const cap = roadLimitRef.current
+      if (cap && speedKmh > cap + 8 && limitWarned.current !== `road:${cap}`) {
+        limitWarned.current = `road:${cap}`
+        speak(`The usual limit on this road is ${cap}. You are over.`, true)
+      }
+    }
+    for (const report of reports) {
+      let dist = haversine(here, report)
+      if (plan && proj) {
+        const mark = projectRoute(plan.coords, report.lat, report.lng)
+        const ahead = mark.along - proj.along
+        if (mark.off > 70 || ahead < 40 || ahead > 900) continue
+        dist = ahead
+      } else {
+        if (dist > 900 || dist < 40) continue
+        const face = bearingFrom(here, report)
+        let delta = Math.abs(face - here.heading) % 360
+        if (delta > 180) delta = 360 - delta
+        if (delta > 70) continue
+      }
+      if (said.current.has(report.id)) continue
+      said.current.add(report.id)
+      speak(reportSpeech(report.type, dist), true)
+    }
+  }
+
+  async function beginNav(target: string) {
+    const res = await fetch(`/api/geocode?q=${encodeURIComponent(target)}`)
+    const places = (await res.json()) as { name: string; lat: number; lng: number }[]
+    const place = places[0]
+    if (!place) { speak(`I cannot find ${target}.`, true); return }
+    await followNav(place.name, place.lat, place.lng)
+  }
+
+  async function followNav(label: string, lat: number, lng: number) {
+    const here = posRef.current
+    const res = await fetch(`/api/route?flat=${here.lat}&flng=${here.lng}&tlat=${lat}&tlng=${lng}&label=${encodeURIComponent(label)}`)
+    if (!res.ok) { speak("The road-finder did not answer.", true); return }
+    const plan = (await res.json()) as NavPlan
+    said.current.clear()
+    for (const town of worldRef.current.towns) {
+      if (haversine(here, town) < 900) sim.current.stopped.add(town.id)
+    }
+    setNav(plan)
+    const proj = projectRoute(plan.coords, here.lat, here.lng)
+    sim.current.distance = proj.along
+    sim.current.dir = 1
+    speak(`${label}. ${formatMeters(plan.meters)}. About ${Math.max(1, Math.round(plan.seconds / 60))} minutes.`, true)
+    if (!gpsRef.current) {
+      sim.current.playing = true
+      speedRef.current = sim.current.speed
+      setSpeed(sim.current.speed)
+      setFollow(true)
+    }
+  }
+
   const runRef = useRef<(cmd: VoiceCommand) => void>(() => {})
   runRef.current = (cmd) => {
     const me = youRef.current
     const map = worldRef.current
     const here = posRef.current
+    if (cmd.type === "road") {
+      send({ t: "do", action: "report", kind: cmd.kind })
+      return
+    }
+    if (cmd.type === "confirm") {
+      const nearestMark = [...map.reports].sort((a, b) => haversine(here, a) - haversine(here, b))[0]
+      if (!nearestMark) { speak("No road mark is close.", true); return }
+      send({ t: "do", action: "confirm", reportId: nearestMark.id, still: cmd.still })
+      return
+    }
+    if (cmd.type === "navigate") {
+      void beginNav(cmd.target)
+      return
+    }
     if (cmd.type === "wake") { speak("Valhalla listens.", true); return }
     if (cmd.type === "unknown") { speak("Say attack, recruit, claim town, status, heal, or raid.", true); return }
     if (cmd.type === "passenger") { setPassenger(cmd.on); speak(cmd.on ? "Passenger mode. The menus are open." : "Passenger mode off.", true); return }
@@ -288,12 +462,16 @@ function Board({
     }
     setCaption(heard)
     const cmd = parseCommand(heard, false)
-    if (!cmd || cmd.type === "unknown") speak(`I heard ${heard}. Say attack, claim, recruit, status, heal, or raid.`, true)
+    if (!cmd || cmd.type === "unknown") speak(`I heard ${heard}. Say attack, claim, police, construction, or navigate to a town.`, true)
     else runRef.current(cmd)
   }
 
   const town = sheet?.kind === "town" ? world.towns.find((t) => t.id === sheet.id) : undefined
   const person = sheet?.kind === "hall" ? world.players.find((p) => p.id === sheet.id) : undefined
+  const along = nav ? projectRoute(nav.coords, pos.lat, pos.lng) : null
+  const limit = nav && along ? ([...nav.steps].reverse().find((s) => s.at <= along.along + 10)?.limit ?? 50) : roadLimit
+  const nextTurn = nav && along ? nav.steps.find((s) => s.at > along.along + 30) : null
+  const eta = nav && along ? Math.max(1, Math.round((nav.seconds * Math.max(0, 1 - along.along / Math.max(nav.meters, 1))) / 60)) : null
   const objective = !you.townIds.length
     ? `Claim ${nearest?.name ?? "the town you stand in"}.`
     : you.hall < 1
@@ -310,11 +488,12 @@ function Board({
         pos={pos}
         follow={follow}
         moving={speed > 5}
-        route={route.coordinates}
+        route={nav?.coords ?? route.coordinates}
         river={riverRoute}
         locked={locked}
         onTown={(id) => setSheet({ kind: "town", id })}
         onHall={(id) => setSheet({ kind: "hall", id })}
+        onReport={(id) => setSheet({ kind: "report", id })}
         onFree={() => setFollow(false)}
       />
       <div className="hud">
@@ -327,15 +506,19 @@ function Board({
             <div className="purse">
               <div><span>Gold</span><br /><b>{you.gold}</b></div>
               <div><span>NP</span><br /><b>{you.np}</b></div>
+              <label className="fine">
+                Volume
+                <input className="volume" type="range" min={0} max={100} value={level} aria-label="Volume" onChange={(e) => { const n = Number(e.target.value); setLevel(n); setMusicLevel(n / 100); if (n === 0) { setMuted(true); setMusicMuted(true) } else if (muted) { setMuted(false); setMusicMuted(false) } }} />
+              </label>
               <Button variant="ghost" size="icon" aria-label={muted ? "Unmute" : "Mute"} onClick={() => { const next = !muted; setMuted(next); setMusicMuted(next) }}>
                 {muted ? <VolumeX /> : <Volume2 />}
               </Button>
             </div>
           </div>
           <div className="drive-row">
-            <div className="speed-block">
+            <div className={`speed-block ${limit != null && speed > limit + 8 ? "over-limit" : ""}`}>
               <strong>{Math.round(speed)}</strong>
-              <em>km/h{!gps && scale !== 1 ? ` · ${scale}×` : ""}</em>
+              <em>km/h{!gps && scale !== 1 ? ` · ${scale}×` : ""}{limit != null ? ` · usual ${limit}` : ""}</em>
             </div>
             <div className="next-town">
               {speed > 5 && ahead ? (
@@ -352,6 +535,12 @@ function Board({
             </div>
           </div>
           {link !== "live" && <div className="banner link-down">Reconnecting to the saga.</div>}
+          {nextTurn && (
+            <div className="banner">
+              <b>{nextTurn.say}</b>
+              <span> · {formatMeters(Math.max(0, nextTurn.at - (along?.along ?? 0)))}{eta != null ? ` · ETA ${eta} min` : ""}{nav ? ` · ${nav.label}` : ""}</span>
+            </div>
+          )}
           {locked && <div className="banner">Hands on the wheel. Say Hey Valhalla. Passenger Mode opens the menus. Ontario does not allow a driver to hold this phone.</div>}
         </div>
 
@@ -393,6 +582,8 @@ function Board({
             </label>
           </div>
           {!locked && (
+            <>
+            <Button onClick={() => setSheet({ kind: "report" })}>Mark the road</Button>
             <div className="dock">
               <button onClick={() => setSheet({ kind: "hall", id: you.id })}>Hall</button>
               <button onClick={() => setSheet({ kind: "warband" })}>Warband</button>
@@ -400,6 +591,7 @@ function Board({
               <button onClick={() => setSheet({ kind: "saga" })}>Saga</button>
               <button onClick={() => setSheet({ kind: "shop" })}>Hoard</button>
             </div>
+            </>
           )}
         </div>
 
@@ -422,11 +614,46 @@ function Board({
             onScale={setScale}
             onGps={() => { setGps(true); sim.current.playing = false; speedRef.current = 0; setSpeed(0); speak("Listening for the real road.", true) }}
             onRide={() => { setGps(false); ride() }}
+            query={query}
+            hits={hits}
+            onQuery={setQuery}
+            onSearch={() => { void fetch(`/api/geocode?q=${encodeURIComponent(query)}`).then((r) => r.json()).then((rows) => setHits(rows as { name: string; lat: number; lng: number }[])) }}
+            onPick={(hit) => { setSheet(null); void followNav(hit.name, hit.lat, hit.lng) }}
           />
+        )}
+        {!locked && sheet?.kind === "report" && !sheet.id && (
+          <Sheet title="Mark the road" onClose={() => setSheet(null)}>
+            <p className="fine">The real meaning is always on the label. The theme is how the warband sees it. Other drivers can say still there, or not there.</p>
+            <div className="grid-2">
+              {REPORT_TYPES.map((kind) => (
+                <Button key={kind} variant="outline" onClick={() => { send({ t: "do", action: "report", kind }); setSheet(null) }}>{REPORT_INFO[kind].label}</Button>
+              ))}
+            </div>
+          </Sheet>
+        )}
+        {!locked && sheet?.kind === "report" && sheet.id && (
+          <Sheet title="A mark on the road" onClose={() => setSheet(null)}>
+            {(() => {
+              const mark = world.reports.find((r) => r.id === sheet.id)
+              const info = mark ? REPORT_INFO[mark.type] : null
+              return <p>{info ? `${info.label}. ${info.theme}.` : "That mark has faded."} {mark ? `Marked by ${mark.reporterName}.` : ""}</p>
+            })()}
+            <div className="row">
+              <Button onClick={() => send({ t: "do", action: "confirm", reportId: sheet.id, still: true })}>Still there</Button>
+              <Button variant="outline" onClick={() => send({ t: "do", action: "confirm", reportId: sheet.id, still: false })}>Not there</Button>
+            </div>
+          </Sheet>
         )}
       </div>
 
-      {battle && <BattleView battle={battle} onClose={() => setBattle(undefined)} />}
+      {battle && <BattleView battle={battle} onClose={() => {
+        const done = battle
+        setBattle(undefined)
+        playSting(done.win)
+        const lead = you.warband[0]
+        if (lead) void playVoice(lead, done.win ? "victory" : "defeat")
+        if (done.gold > 0) playSfx("coins")
+      }} />}
 
       <Dialog open={!!pending} onOpenChange={(open) => !open && setPending(null)}>
         <DialogContent>

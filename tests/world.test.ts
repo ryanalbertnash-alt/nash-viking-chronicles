@@ -1,4 +1,5 @@
 import { champions, items, towns } from "../src/shared/catalog.ts"
+import { usualLimit } from "../src/shared/limits.ts"
 import { parseCommand } from "../src/shared/voice.ts"
 import { createGame } from "../server/world.ts"
 
@@ -24,6 +25,11 @@ export async function runWorld() {
   assert(button?.type === "recruit", "recruit")
   assert(parseCommand("build the longship dock", false)?.type === "build", "dock before raid parse")
   assert(parseCommand("the radio said attack", true) === null, "no wake no attack")
+  assert(parseCommand("hey valhalla police", true)?.type === "road", "police report")
+  assert(parseCommand("navigate to ottawa", false)?.type === "navigate", "navigate")
+  assert(usualLimit("County Road 31").kmh === 80, "county limit")
+  assert(usualLimit("Queen Street").kmh === 50, "street limit")
+  assert(usualLimit("Highway 417").kmh === 100, "highway limit")
 
   const game = createGame(undefined, () => 0.5)
   const a = game.join({ name: "Sam Nash" })
@@ -99,6 +105,17 @@ export async function runWorld() {
   assert(world.towns.length === towns.length, "public towns")
   assert(world.ships.length >= 4, "ships include the player's")
   assert(world.players.some((p) => p.name === "Jarl Harald"), "ai rivals")
+  const scoutGold = game.privateYou(a.playerId!)!.gold
+  const marked = game.fileReport(a.playerId!, "police")
+  assert(marked.event?.text.includes("Police"), marked.error ?? "report")
+  assert(game.privateYou(a.playerId!)!.gold > scoutGold, "scout gold")
+  assert(game.publicWorld().reports.some((r) => r.type === "police"), "shared report")
+  assert(game.publicWorld().board.scouts[0], "scout board")
+  const againMark = game.fileReport(a.playerId!, "police")
+  assert(againMark.error, "duplicate report")
+  const distant = game.confirmReport(b.playerId!, game.publicWorld().reports[0]!.id, true)
+  assert(distant.error, "too far to confirm")
+
   console.log("world tests passed")
 }
 

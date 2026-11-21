@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { createServer } from "node:http"
@@ -6,6 +8,8 @@ import { WebSocketServer, type WebSocket } from "ws"
 import { WORLD_VERSION } from "../src/shared/catalog.ts"
 import type { BuildingId, Faction, ServerMsg, Stance } from "../src/shared/types.ts"
 import { createGame, freshState, normalize } from "./world.ts"
+import { buildRoute, roadAt, searchPlaces } from "./route.ts"
+import { REPORT_TYPES, type ReportType } from "../src/shared/reports.ts"
 
 type Client = { ws: WebSocket; playerId: string | null }
 
@@ -31,6 +35,71 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(saveNow, 400)
   }
+
+  app.get("/api/geocode", async (req, res) => {
+    const q = String(req.query.q ?? "")
+    try {
+      res.json(await searchPlaces(q))
+    } catch {
+      res.status(502).json({ error: "The map search did not answer." })
+    }
+  })
+
+  app.get("/api/road", async (req, res) => {
+    const lat = Number(req.query.lat)
+    const lng = Number(req.query.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      res.status(400).json({ error: "Need a point." })
+      return
+    }
+    try {
+      res.json(await roadAt(lat, lng))
+    } catch {
+      res.json(null)
+    }
+  })
+
+  app.get("/api/route", async (req, res) => {
+    const flat = Number(req.query.flat)
+    const flng = Number(req.query.flng)
+    const tlat = Number(req.query.tlat)
+    const tlng = Number(req.query.tlng)
+    const label = String(req.query.label ?? "Destination")
+    if (![flat, flng, tlat, tlng].every(Number.isFinite)) {
+      res.status(400).json({ error: "Need a start and a destination." })
+      return
+    }
+    try {
+      res.json(await buildRoute({ lat: flat, lng: flng }, { lat: tlat, lng: tlng }, label))
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : "No road." })
+    }
+  })
+
+  app.post("/api/narrate", express.json({ limit: "8kb" }), (req, res) => {
+    const text = String((req.body as { text?: string } | undefined)?.text ?? "").replace(/\s+/g, " ").trim().slice(0, 420)
+    if (!text) {
+      res.status(400).end()
+      return
+    }
+    try {
+      const hash = createHash("sha1").update(text).digest("hex").slice(0, 16)
+      const dir = path.join(process.cwd(), "server/data/narration")
+      const mp3 = path.join(dir, `${hash}.mp3`)
+      if (!fs.existsSync(mp3)) {
+        fs.mkdirSync(dir, { recursive: true })
+        const wav = `${mp3}.wav`
+        const spoken = spawnSync("espeak-ng", ["-v", "en-gb-x-rp", "-p", "46", "-s", "148", "-w", wav, text], { timeout: 12000 })
+        if (spoken.status !== 0) throw new Error("espeak")
+        const encoded = spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-i", wav, "-codec:a", "libmp3lame", "-b:a", "64k", mp3], { timeout: 12000 })
+        fs.unlink(wav, () => {})
+        if (encoded.status !== 0) throw new Error("ffmpeg")
+      }
+      res.sendFile(mp3)
+    } catch {
+      res.status(503).json({ error: "The narrator is quiet." })
+    }
+  })
 
   app.get("/api/health", (_req, res) => {
     const world = game.publicWorld()
@@ -159,6 +228,8 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
     if (action === "buy") return game.buy(id, String(msg.sku ?? ""))
     if (action === "rest") return game.rest(id)
     if (action === "tribute") return game.tribute(id, String(msg.townId ?? ""))
+    if (action === "report" && REPORT_TYPES.includes(String(msg.kind) as ReportType)) return game.fileReport(id, String(msg.kind) as ReportType)
+    if (action === "confirm") return game.confirmReport(id, String(msg.reportId ?? ""), Boolean(msg.still))
     return { error: "Unknown order." }
   }
 

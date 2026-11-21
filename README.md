@@ -22,6 +22,7 @@ Open [http://127.0.0.1:4477](http://127.0.0.1:4477). On a phone, use the compute
 7. Above 10 km/h the tap menus lock. That is on purpose. Ontario does not allow a driver to hold a phone. A passenger can flip **Passenger Mode**. Long-press the rune to pull over.
 8. Parked, a fight shows each blow. While the wheels turn, you only get the spoken report.
 9. The hoard sells skins, weapons, longships, and draughts for Nash Points. **Every purchase in this prototype is a demo. Nothing is charged.**
+10. Search a destination, or say “Hey Valhalla, navigate to Ottawa.” The route is a real road, with spoken turns, an ETA, and a reroute if you leave it. Say “Hey Valhalla, police” (or construction, crash, hazard, pothole, traffic, road closed, weather, camera) to mark the road for every player. Confirm with “still there” or “not there.” Reports pay gold and scout fame. The speed shows the usual Ontario limit for that kind of road. You cannot type a search while the car is moving.
 
 ## Two players
 
@@ -71,7 +72,11 @@ The socket uses the page host, so a wrapped app needs the game server reachable 
 
 ## Map and roads
 
-Terrain is OpenStreetMap. No API key. The dark grade is a filter on those tiles. Driving lines come from the public OSRM router. © OpenStreetMap contributors.
+Terrain is OpenStreetMap. No API key. The dark grade is a filter on those tiles. Turn-by-turn routes come from the public Valhalla router at `valhalla1.openstreetmap.de`. The spoken line is Valhalla's own instruction. A posted speed is often missing from that data, so the warning uses the usual Ontario limit for the kind of road: 50 in town, 80 on a county road, 100 on a King's Highway. It is labelled **usual**, not a sign you passed. © OpenStreetMap contributors.
+
+## Sound
+
+Music beds are original. The 24 champions each have five spoken lines, made with eSpeak NG, and Grogs are pitched down. Battle hits, the chop, and the coins are Kenney's CC0 packs. Horns, drums, oars, and the roar were made for this game. Credits are in `public/audio/CREDITS.md`. Music ducks under any voice, and it sits lower while the car is moving.
 
 ## Art
 

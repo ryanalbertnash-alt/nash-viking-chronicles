@@ -17,6 +17,7 @@ import {
   warbandCap,
 } from "../src/shared/catalog.ts"
 import { formatMeters, haversine, homeSpot, nearestOnLine, offsetMeters, pointAlong, routeLength } from "../src/shared/geo.ts"
+import { REPORT_INFO, type ReportType } from "../src/shared/reports.ts"
 import { riverRoute } from "../src/shared/routes.ts"
 import type {
   BattleResult,
@@ -101,6 +102,7 @@ export function freshState(): GameState {
     ],
     flavorAt: now,
     economyAt: now,
+    reports: [],
   }
 }
 
@@ -110,6 +112,8 @@ export function normalize(state: GameState): GameState {
   }
   if (!state.flavorAt) state.flavorAt = Date.now()
   if (!state.economyAt) state.economyAt = Date.now()
+  if (!state.reports) state.reports = []
+  for (const p of Object.values(state.players)) if (typeof p.scouts !== "number") p.scouts = 0
   return state
 }
 
@@ -449,6 +453,61 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     return { event: event(`${town.name} pays ${gain} gold in tribute.`, "good") }
   }
 
+  function fileReport(playerId: string, type: ReportType): ActionResult {
+    const p = mustHuman(playerId)
+    if ("error" in p) return p
+    const info = REPORT_INFO[type]
+    if (!info) return { error: "That is not a road mark I know." }
+    const near = state.reports.find((r) => r.type === type && haversine(p, r) < 150)
+    if (near) return { error: `${info.label} is already marked here.` }
+    const now = Date.now()
+    state.reports.push({
+      id: nid("r"),
+      type,
+      lat: p.lat,
+      lng: p.lng,
+      reporterId: p.id,
+      reporterName: p.name,
+      faction: p.faction!,
+      note: info.theme,
+      createdAt: now,
+      expiresAt: now + info.minutes * 60_000,
+      still: [],
+      gone: [],
+    })
+    p.gold += info.gold
+    p.scouts += 1
+    const notes = addSeasonXp(p, info.xp)
+    const text = `${info.label} marked. ${info.theme}. You earn ${info.gold} gold for the scout. ${notes.join(" ")}`.trim()
+    saga(`${p.name} marks ${info.label.toLowerCase()} on the road.`)
+    return { event: event(text, "good") }
+  }
+
+  function confirmReport(playerId: string, reportId: string, still: boolean): ActionResult {
+    const p = mustHuman(playerId)
+    if ("error" in p) return p
+    const report = state.reports.find((r) => r.id === reportId)
+    if (!report) return { error: "That mark has already faded." }
+    if (report.reporterId === p.id) return { error: "You marked that yourself." }
+    if (haversine(p, report) > 1200) return { error: "Ride closer before you confirm the mark." }
+    if (report.still.includes(p.id) || report.gone.includes(p.id)) return { error: "You already spoke on that mark." }
+    const info = REPORT_INFO[report.type]
+    if (still) {
+      report.still.push(p.id)
+      report.expiresAt += 15 * 60_000
+      p.gold += 8
+      p.scouts += 1
+      addSeasonXp(p, 15)
+      return { event: event(`${info.label} is still there. Eight gold for confirming.`, "good") }
+    }
+    report.gone.push(p.id)
+    p.gold += 6
+    p.scouts += 1
+    addSeasonXp(p, 12)
+    if (report.gone.length >= 2) state.reports = state.reports.filter((r) => r.id !== report.id)
+    return { event: event(`${info.label} may be gone. Six gold for checking.`, "info") }
+  }
+
   function tick(now = Date.now()): { playerId: string; event: GameEvent }[] {
     const events: { playerId: string; event: GameEvent }[] = []
     if (now - state.economyAt >= 30000) {
@@ -508,6 +567,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
         ship.progress = clamp(ship.progress, 0, 1)
       }
     }
+    state.reports = state.reports.filter((r) => r.expiresAt > now && r.gone.length < 2)
     if (now - state.flavorAt >= 70000) {
       state.flavorAt = now
       const hulk = state.ships.find((s) => s.id === "ship-hulk")
@@ -811,6 +871,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       players: Object.values(state.players).filter((p) => p.faction).map((p) => publicPlayer(p, now)),
       ships: state.ships.map(publicShip),
       saga: state.saga.map((s) => ({ id: s.id, text: s.text })),
+      reports: state.reports,
       board: board(),
       season: SEASON_NAME,
     }
@@ -866,6 +927,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       wins: p.wins,
       losses: p.losses,
       raids: p.raids,
+      scouts: p.scouts ?? 0,
       seasonXp: p.seasonXp,
       pass: p.pass,
       freeTier: p.freeTier,
@@ -948,7 +1010,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     const list = Object.values(state.players).filter((p) => p.faction)
     const clans = { viking: 0, grog: 0 }
     for (const p of list) {
-      const score = p.wins * 4 + p.raids * 6 + p.hall * 3 + state.towns.filter((t) => t.ownerId === p.id).length * 10
+      const score = p.wins * 4 + p.raids * 6 + p.hall * 3 + (p.scouts ?? 0) * 3 + state.towns.filter((t) => t.ownerId === p.id).length * 10
       if (p.faction === "viking") clans.viking += score
       if (p.faction === "grog") clans.grog += score
     }
@@ -959,6 +1021,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       towns: [...list].map((p) => ({ ...row(p), count: state.towns.filter((t) => t.ownerId === p.id).length })).sort((a, b) => b.count - a.count).slice(0, 8),
       richest: [...list].map((p) => ({ ...row(p), worth: p.gold + buildingWorth(p) })).sort((a, b) => b.worth - a.worth).slice(0, 8),
       raids: [...list].sort((a, b) => b.raids - a.raids).slice(0, 8).map((p) => ({ ...row(p), raids: p.raids })),
+      scouts: [...list].sort((a, b) => (b.scouts ?? 0) - (a.scouts ?? 0)).slice(0, 8).map((p) => ({ ...row(p), scouts: p.scouts ?? 0 })),
     }
   }
 
@@ -1028,6 +1091,8 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     buy,
     rest,
     tribute,
+    fileReport,
+    confirmReport,
     tick,
     publicWorld,
     privateYou,
@@ -1081,6 +1146,7 @@ function blankPlayer(partial: Partial<Player> & { id: string; name: string }): P
     wins: partial.wins ?? 0,
     losses: 0,
     raids: partial.raids ?? 0,
+    scouts: partial.scouts ?? 0,
     seasonXp: 0,
     pass: false,
     freeTier: 0,

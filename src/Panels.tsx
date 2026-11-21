@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react"
+import { playSfx } from "@/audio"
 import { Art, asset } from "@/art"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -232,7 +233,7 @@ export function ShopPanel({ you, send, onClose }: { you: PrivateYou; send: Send;
 
 export function SagaPanel({ world, onClose }: { world: PublicWorld; onClose: () => void }) {
   const total = world.board.clans.viking + world.board.clans.grog || 1
-  const [tab, setTab] = useState<"war" | "towns" | "gold" | "raids" | "log">("war")
+  const [tab, setTab] = useState<"war" | "towns" | "gold" | "raids" | "scouts" | "log">("war")
   return (
     <Sheet title="The saga" onClose={onClose}>
       <div className="clan-bar">
@@ -240,24 +241,27 @@ export function SagaPanel({ world, onClose }: { world: PublicWorld; onClose: () 
         <span>Grogs {world.board.clans.grog}</span>
         <div className="track"><span style={{ width: `${(world.board.clans.viking / total) * 100}%` }} /></div>
       </div>
+      <p className="fine">Scout marks add to a clan's hold on the map. Top Scouts are the drivers other players trust.</p>
       <div className="tabs">
         <Button size="sm" variant={tab === "war" ? "default" : "outline"} onClick={() => setTab("war")}>Warriors</Button>
         <Button size="sm" variant={tab === "towns" ? "default" : "outline"} onClick={() => setTab("towns")}>Towns</Button>
         <Button size="sm" variant={tab === "gold" ? "default" : "outline"} onClick={() => setTab("gold")}>Richest</Button>
         <Button size="sm" variant={tab === "raids" ? "default" : "outline"} onClick={() => setTab("raids")}>Raids</Button>
+        <Button size="sm" variant={tab === "scouts" ? "default" : "outline"} onClick={() => setTab("scouts")}>Scouts</Button>
         <Button size="sm" variant={tab === "log" ? "default" : "outline"} onClick={() => setTab("log")}>Log</Button>
       </div>
       {tab === "war" && world.board.warriors.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.wins} wins · {r.faction}</p>)}
       {tab === "towns" && world.board.towns.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.count} towns</p>)}
       {tab === "gold" && world.board.richest.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.worth} worth</p>)}
       {tab === "raids" && world.board.raids.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.raids} raids</p>)}
+      {tab === "scouts" && world.board.scouts.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.scouts} scout marks · {r.faction}</p>)}
       {tab === "log" && world.saga.map((s) => <p key={s.id} className="fine">{s.text}</p>)}
     </Sheet>
   )
 }
 
 export function RoadsPanel({
-  routeId, scale, gps, onClose, onRoute, onScale, onGps, onRide,
+  routeId, scale, gps, onClose, onRoute, onScale, onGps, onRide, query, hits, onQuery, onSearch, onPick,
 }: {
   routeId: string
   scale: number
@@ -267,9 +271,24 @@ export function RoadsPanel({
   onScale: (n: number) => void
   onGps: () => void
   onRide: () => void
+  query: string
+  hits: { name: string; lat: number; lng: number }[]
+  onQuery: (q: string) => void
+  onSearch: () => void
+  onPick: (hit: { name: string; lat: number; lng: number }) => void
 }) {
   return (
     <Sheet title="Roads" onClose={onClose}>
+      <form className="stack" onSubmit={(e) => { e.preventDefault(); onSearch() }}>
+        <label className="fine">Search a destination. Turn-by-turn uses the real road.</label>
+        <input className="name-field" style={{ width: "100%" }} value={query} onChange={(e) => onQuery(e.target.value)} placeholder="Ottawa, Winchester, a street…" />
+        <Button type="submit" size="sm">Find the road</Button>
+      </form>
+      {hits.map((hit) => (
+        <button key={`${hit.lat},${hit.lng}`} className="card" style={{ textAlign: "left" }} onClick={() => onPick(hit)}>
+          <h3>{hit.name}</h3>
+        </button>
+      ))}
       <p className="fine">Saga drive follows real roads through Stormont, Dundas, Glengarry, and Ottawa. The clock runs faster than the speedometer so a desk can reach the next town.</p>
       {driveRoutes.map((r) => (
         <button key={r.id} className="card" onClick={() => onRoute(r.id)} style={{ textAlign: "left" }}>
@@ -293,6 +312,7 @@ export function RoadsPanel({
 export function BattleView({ battle, onClose }: { battle: BattleResult; onClose: () => void }) {
   const [step, setStep] = useState(0)
   useEffect(() => {
+    if (step > 0) playSfx(step % 3 === 0 ? "shield" : step % 2 === 0 ? "axe" : "clash")
     if (step >= battle.rounds.length - 1) return
     const t = window.setTimeout(() => setStep((s) => s + 1), 1100)
     return () => window.clearTimeout(t)

@@ -1,3 +1,4 @@
+import { duckSpeech } from "@/audio"
 import type { Faction } from "@/shared/types.ts"
 
 type Listener = (text: string) => void
@@ -73,11 +74,13 @@ function pump() {
   u.onstart = () => {
     speaking = true
     paused = true
+    duckSpeech(true)
   }
   u.onend = () => {
     speaking = false
     if (!queue.length) {
       paused = false
+      duckSpeech(false)
       resumeListen?.()
     }
     pump()
@@ -85,6 +88,7 @@ function pump() {
   u.onerror = () => {
     speaking = false
     paused = false
+    duckSpeech(false)
     pump()
   }
   window.speechSynthesis.speak(u)
