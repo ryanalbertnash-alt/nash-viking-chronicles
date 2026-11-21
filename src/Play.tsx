@@ -65,6 +65,7 @@ function Board({
   const offRoute = useRef(0)
   const guideRef = useRef<(here: { lat: number; lng: number; heading: number }, speedKmh: number) => void>(() => {})
   const sim = useRef({ playing: false, distance: 0, dir: 1 as 1 | -1, speed: 72, stopped: new Set<string>(), ready: false })
+  const eyed = useRef(new Set<string>())
   const posRef = useRef(pos)
   posRef.current = pos
   const speedRef = useRef(0)
@@ -200,6 +201,7 @@ function Board({
           const holder = town.ownerName ? `${town.ownerName} holds it.` : "It is unclaimed."
           const who = town.guardianName && town.guardianFree ? ` ${town.guardianName} is here.` : ""
           speak(`You are in ${town.name}. ${holder}${who}`, true)
+          if (!eyed.current.has(town.id)) { eyed.current.add(town.id); send({ t: "do", action: "sight", townId: town.id }) }
           setSheet({ kind: "town", id: town.id })
         }
         if (dist > 1300) sim.current.stopped.delete(town.id)
@@ -210,6 +212,13 @@ function Board({
       send({ t: "pos", lat: p.lat, lng: p.lng, heading: p.heading, speed: speedRef.current })
     }, 1000)
     return () => { window.clearInterval(id); window.clearInterval(ping) }
+  }, [send])
+
+  useEffect(() => {
+    const near = worldRef.current.towns.find((town) => haversine(posRef.current, town) < 800)
+    if (!near || eyed.current.has(near.id)) return
+    eyed.current.add(near.id)
+    send({ t: "do", action: "sight", townId: near.id })
   }, [send])
 
   useEffect(() => {

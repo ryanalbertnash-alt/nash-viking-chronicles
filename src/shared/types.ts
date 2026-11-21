@@ -6,7 +6,7 @@ export type TownKind = "hamlet" | "village" | "town" | "city"
 export type ItemKind = "skin" | "weapon" | "longship" | "potion"
 export type Rarity = "common" | "uncommon" | "rare" | "legendary"
 export type Stance = "smash" | "guard" | "volley" | "heal"
-export type BuildingId = "hall" | "forge" | "walls" | "dock"
+export type BuildingId = "hall" | "forge" | "walls" | "dock" | "yard" | "shrine"
 
 export type ChampionDef = {
   id: string
@@ -107,6 +107,9 @@ export type Player = {
   forge: number
   walls: number
   dock: number
+  yard: number
+  shrine: number
+  seenTowns: string[]
   gold: number
   np: number
   champions: OwnedChampion[]
@@ -254,6 +257,7 @@ export type Board = {
   richest: { name: string; faction: Faction | null; worth: number }[]
   raids: { name: string; faction: Faction | null; raids: number }[]
   scouts: { name: string; faction: Faction | null; scouts: number }[]
+  live: { name: string; faction: Faction | null; towns: number; wins: number }[]
 }
 
 export type PublicWorld = {
@@ -294,6 +298,9 @@ export type PrivateYou = {
   forge: number
   walls: number
   dock: number
+  yard: number
+  shrine: number
+  seenTowns: string[]
   gold: number
   np: number
   champions: PrivateChampion[]

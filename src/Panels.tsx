@@ -3,7 +3,7 @@ import { playSfx } from "@/audio"
 import { Art, asset } from "@/art"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
-import { RECIPES, UNIT_INFO, UNIT_ORDER, championClass, companyUnlock, unitName } from "@/shared/army.ts"
+import { RECIPES, UNIT_INFO, UNIT_ORDER, championClass, companyUnlock, unitName, unitStats } from "@/shared/army.ts"
 import { BUILDINGS, OFFERS, PASS_TIERS, TOWN_POWER, champions, itemById, itemPrice, items, monthlyShop } from "@/shared/catalog.ts"
 import { driveRoutes } from "@/shared/routes.ts"
 import { formatMeters, haversine } from "@/shared/geo.ts"
@@ -127,7 +127,7 @@ export function WarbandPanel({ you, send, onClose }: { you: PrivateYou; send: Se
         return (
           <article key={cls} className="card">
             <h3>{unitName(you.faction, cls)} · {info.title}</h3>
-            <p className="fine">{info.blurb} Beats {UNIT_INFO[info.beats].title}.</p>
+            <p className="fine">{info.blurb} Beats {UNIT_INFO[info.beats].title}. Attack {unitStats(you.faction, cls).attack} · Defense {unitStats(you.faction, cls).defense} · Health {unitStats(you.faction, cls).hp}.</p>
             <p className="muted" style={{ margin: 0 }}>{have ? `${have.strength} strong` : "Not raised."}{rule.ok ? ` · cap ${rule.cap}` : ""}</p>
             {rule.ok ? <Button size="sm" onClick={() => send({ t: "do", action: "raise", cls })}>{have ? "Refill" : "Raise"} · {rule.cost} gold</Button> : <p className="fine">{rule.why}</p>}
           </article>
@@ -211,9 +211,9 @@ export function ShopPanel({ you, send, onClose }: { you: PrivateYou; send: Send;
             <Art file={it.art} alt="" />
             <div>
               <h3>{it.name}</h3>
-              <p className="muted" style={{ margin: 0 }}>{it.rarity} · {it.kind}{deal ? " · this moon" : ""}{owned ? ` · owned ${owned}` : ""}</p>
+              <p className={`muted rarity rarity-${it.rarity}`} style={{ margin: 0 }}>{it.rarity} · {it.kind}{deal ? " · this moon, 20% off" : ""}{owned ? ` · owned ${owned}` : ""}</p>
               <p className="fine">{it.blurb}</p>
-              <Button size="sm" onClick={() => setSku(it.id)}>{cost} NP{deal ? ` (was ${it.price})` : ""}</Button>
+              <Button size="sm" onClick={() => setSku(it.id)}>Placeholder · {cost} NP{deal ? ` (was ${it.price})` : ""}</Button>
             </div>
           </article>
         )
@@ -230,7 +230,7 @@ export function ShopPanel({ you, send, onClose }: { you: PrivateYou; send: Send;
             <article key={o.sku} className="card">
               <h3>{o.name}</h3>
               <p className="fine">{o.blurb}</p>
-              <Button size="sm" variant="secondary" onClick={() => setSku(o.sku)}>Optional demo · ${o.usd.toFixed(2)}</Button>
+              <Button size="sm" variant="secondary" onClick={() => setSku(o.sku)}>Placeholder · ${o.usd.toFixed(2)}</Button>
             </article>
           ))}
         </>
@@ -256,7 +256,7 @@ export function ShopPanel({ you, send, onClose }: { you: PrivateYou; send: Send;
 
 export function SagaPanel({ world, onClose }: { world: PublicWorld; onClose: () => void }) {
   const total = world.board.clans.viking + world.board.clans.grog || 1
-  const [tab, setTab] = useState<"war" | "towns" | "gold" | "raids" | "scouts" | "log">("war")
+  const [tab, setTab] = useState<"war" | "towns" | "gold" | "raids" | "scouts" | "live" | "log">("live")
   return (
     <Sheet title="The saga" onClose={onClose}>
       <div className="clan-bar">
@@ -270,6 +270,7 @@ export function SagaPanel({ world, onClose }: { world: PublicWorld; onClose: () 
         <Button size="sm" variant={tab === "towns" ? "default" : "outline"} onClick={() => setTab("towns")}>Towns</Button>
         <Button size="sm" variant={tab === "gold" ? "default" : "outline"} onClick={() => setTab("gold")}>Richest</Button>
         <Button size="sm" variant={tab === "raids" ? "default" : "outline"} onClick={() => setTab("raids")}>Raids</Button>
+        <Button size="sm" variant={tab === "live" ? "default" : "outline"} onClick={() => setTab("live")}>Players</Button>
         <Button size="sm" variant={tab === "scouts" ? "default" : "outline"} onClick={() => setTab("scouts")}>Seers</Button>
         <Button size="sm" variant={tab === "log" ? "default" : "outline"} onClick={() => setTab("log")}>Log</Button>
       </div>
@@ -278,6 +279,7 @@ export function SagaPanel({ world, onClose }: { world: PublicWorld; onClose: () 
       {tab === "gold" && world.board.richest.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.worth} worth</p>)}
       {tab === "raids" && world.board.raids.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.raids} raids</p>)}
       {tab === "scouts" && world.board.scouts.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.scouts} warnings on the real road · {r.faction}</p>)}
+      {tab === "live" && (world.board.live.length ? world.board.live.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.towns} towns · {r.wins} wins · {r.faction === "grog" ? "Grogs" : "Nash"}</p>) : <p className="fine">No living players on the road yet.</p>)}
       {tab === "log" && world.saga.map((s) => <p key={s.id} className="fine">{s.text}</p>)}
     </Sheet>
   )
@@ -335,6 +337,7 @@ export function RoadsPanel({
 export function BattleView({ battle, onClose }: { battle: BattleResult; onClose: () => void }) {
   const [step, setStep] = useState(0)
   useEffect(() => {
+    if (step === 0) { playSfx("horn"); if (battle.siege) playSfx("drums") }
     if (step > 0) playSfx(step % 3 === 0 ? "shield" : step % 2 === 0 ? "axe" : "clash")
     if (step >= battle.rounds.length - 1) return
     const t = window.setTimeout(() => setStep((s) => s + 1), 1100)
@@ -345,7 +348,7 @@ export function BattleView({ battle, onClose }: { battle: BattleResult; onClose:
   const left = battleScene(battle.attackerFaction, "left")
   const right = battleScene(battle.defenderFaction, "right")
   return (
-    <section className="battle">
+    <section className={`battle ${battle.siege ? "siege" : ""}`}>
       <div className="battle-bg" aria-hidden="true">
         <img src={asset(left)} alt="" />
         <img src={asset(right)} alt="" />

@@ -260,7 +260,8 @@ img { max-width: 100%; display: block; }
 .dock { display: flex; gap: 8px; width: min(640px, 100%); }
 .dock button {
   flex: 1;
-  min-height: 48px;
+  min-height: 56px;
+  font-size: 15px;
   border-radius: 12px;
   border: 1px solid #6d5834;
   background: rgba(18, 14, 11, 0.92);
@@ -324,7 +325,7 @@ img { max-width: 100%; display: block; }
 }
 .item-card { display: grid; grid-template-columns: 72px 1fr; gap: 8px; align-items: center; }
 .item-card img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; }
-.tabs { display: flex; gap: 6px; overflow: auto; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
 select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b; border: 1px solid #6d5834; border-radius: 8px; padding: 6px; }
 
 .battle {
@@ -355,6 +356,15 @@ select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b
 }
 .battle > :not(.battle-bg) { position: relative; z-index: 1; }
 .battle h2 { font-family: Cinzel, Palatino, serif; margin: 0; }
+.battle .lines > div:first-child { animation: surge 1s ease; }
+.battle.siege .lines > div:last-child { animation: brace 1s ease; }
+.battle.siege { box-shadow: inset 0 0 0 2px #8a7040; }
+@keyframes surge { from { transform: translateX(-18px); opacity: 0.4 } to { transform: none; opacity: 1 } }
+@keyframes brace { from { transform: translateX(18px) } to { transform: none } }
+.rarity-common { color: #c8bfb2; }
+.rarity-uncommon { color: #8fbf7a; }
+.rarity-rare { color: #7eb0d4; }
+.rarity-legendary { color: #e2c07a; }
 .unit-lines { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; color: #e2c07a; }
 .lines { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 0; overflow: auto; }
 .battle .log { margin: 0; font-size: 15px; line-height: 1.4; }

@@ -18,7 +18,7 @@ import {
 } from "../src/shared/catalog.ts"
 import { formatMeters, haversine, homeSpot, nearestOnLine, offsetMeters, pointAlong, routeLength } from "../src/shared/geo.ts"
 import { nearestPost } from "../src/shared/posts.ts"
-import { RECIPES, UNIT_INFO, championClass, companyUnlock, counter, matchLine, unitName, type UnitClass } from "../src/shared/army.ts"
+import { RECIPES, UNIT_INFO, championClass, companyUnlock, counter, matchLine, unitName, unitStats, type UnitClass } from "../src/shared/army.ts"
 import { REPORT_INFO, type ReportType } from "../src/shared/reports.ts"
 import { riverRoute } from "../src/shared/routes.ts"
 import type {
@@ -120,6 +120,9 @@ export function normalize(state: GameState): GameState {
     if (typeof p.scouts !== "number") p.scouts = 0
     if (!Array.isArray(p.companies)) p.companies = p.faction ? [{ cls: "infantry", strength: 36, xp: 0 }] : []
     if (typeof p.mail !== "number") p.mail = 0
+    if (typeof p.yard !== "number") p.yard = 0
+    if (typeof p.shrine !== "number") p.shrine = 0
+    if (!Array.isArray(p.seenTowns)) p.seenTowns = []
     delete (p as { sub?: unknown }).sub
   }
   return state
@@ -329,6 +332,8 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       : part === "dock" && p.dock === 1 ? " Riders can now be raised, and the longship can raid a shore."
       : part === "walls" && p.walls === 2 ? " Towers will shoot when this place is besieged."
       : part === "hall" && p.hall === 2 ? " Another hero can march. With a forge at 2, a monster can be raised."
+      : part === "yard" && p.yard === 1 ? " The companies can drill harder."
+      : part === "shrine" && p.shrine === 1 ? " A monster can now be raised here."
       : ""
     const text = `${def.name} rises to level ${p[part]} at ${p.villageName}.${opened}`
     saga(`${p.name} raises ${def.name.toLowerCase()} to level ${p[part]}.`)
@@ -379,6 +384,25 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     p.warband = unique
     const names = unique.map((id) => championById(id)?.name ?? id).join(", ")
     return { event: event(`The marching warband is ${names}.`, "info") }
+  }
+
+  function sight(playerId: string, townId: string): ActionResult {
+    const p = mustHuman(playerId)
+    if ("error" in p) return p
+    const town = townById(townId)
+    if (!town) return { error: "No such town." }
+    if (haversine(p, town) > 800) return { error: `${town.name} is still ahead.` }
+    if (!p.seenTowns) p.seenTowns = []
+    if (p.seenTowns.includes(town.id)) return {}
+    p.seenTowns.push(town.id)
+    const gold = 8 + TOWN_POWER[town.kind].income * 4
+    p.gold += gold
+    const notes = addSeasonXp(p, 20)
+    const holder = townOwner(town.id)
+    const who = holder ? `${player(holder)?.name ?? "A rival"} holds it.` : "It is unclaimed."
+    const text = `First sight of ${town.name}. The road pays ${gold} gold. ${who} ${notes.join(" ")}`.trim()
+    saga(`${p.name} comes to ${town.name} for the first time.`)
+    return { event: event(text, "good") }
   }
 
   function raise(playerId: string, cls: UnitClass): ActionResult {
@@ -813,9 +837,9 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       const veteran = 1 + Math.min(0.25, company.xp / 200)
       const weight = company.strength * veteran
       side.blocks.push({ cls: company.cls, name: unitName(p.faction, company.cls), weight })
-      const punch = company.cls === "monster" ? 1.35 : company.cls === "cavalry" ? 1.05 : company.cls === "archer" ? 0.92 : 0.84
-      side.attack += weight * punch
-      side.defense += weight * (company.cls === "infantry" ? 0.55 : company.cls === "monster" ? 0.4 : 0.28)
+      const stats = unitStats(p.faction, company.cls)
+      side.attack += weight * (stats.attack / 10)
+      side.defense += weight * (stats.defense / 18)
       side.hp += company.strength * 1.4
       side.maxHp += company.strength * 1.4
       if (company.cls === "archer") side.hasRanged = true
@@ -843,7 +867,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       side.hp = side.maxHp = 90
       side.champs = [{ id: "levy", name: "Hall levy", art: p.faction === "grog" ? "scenes/orc-horned.webp" : "scenes/wolves.jpg", hp: 90, maxHp: 90, cry: "" }]
     }
-    side.defense += (p.mail ?? 0) * 8
+    side.defense += (p.mail ?? 0) * 8 + (p.shrine ?? 0) * 6
     side.attack *= 1 + p.forge * 0.04
     if (p.buff) {
       side.attack *= 1 + p.buff.attack
@@ -1009,6 +1033,9 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       forge: p.forge,
       walls: p.walls,
       dock: p.dock,
+      yard: p.yard ?? 0,
+      shrine: p.shrine ?? 0,
+      seenTowns: p.seenTowns ?? [],
       gold: p.gold,
       np: p.np,
       companies: p.companies ?? [],
@@ -1136,6 +1163,11 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       richest: [...list].map((p) => ({ ...row(p), worth: p.gold + buildingWorth(p) })).sort((a, b) => b.worth - a.worth).slice(0, 8),
       raids: [...list].sort((a, b) => b.raids - a.raids).slice(0, 8).map((p) => ({ ...row(p), raids: p.raids })),
       scouts: [...list].sort((a, b) => (b.scouts ?? 0) - (a.scouts ?? 0)).slice(0, 8).map((p) => ({ ...row(p), scouts: p.scouts ?? 0 })),
+      live: list.filter((p) => !p.isAI).map((p) => ({
+        ...row(p),
+        towns: state.towns.filter((t) => t.ownerId === p.id).length,
+        wins: p.wins,
+      })).sort((a, b) => b.towns - a.towns || b.wins - a.wins),
     }
   }
 
@@ -1207,6 +1239,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     restock,
     raise,
     craft,
+    sight,
     tribute,
     fileReport,
     confirmReport,
@@ -1252,6 +1285,9 @@ function blankPlayer(partial: Partial<Player> & { id: string; name: string }): P
     forge: partial.forge ?? 0,
     walls: partial.walls ?? 0,
     dock: partial.dock ?? 0,
+    yard: partial.yard ?? 0,
+    shrine: partial.shrine ?? 0,
+    seenTowns: partial.seenTowns ?? [],
     gold: partial.gold ?? 0,
     np: partial.np ?? 0,
     champions: partial.champions ?? [],
@@ -1366,7 +1402,7 @@ function maxHealth(id: string, level: number): number {
 }
 
 function damageBuilding(p: Player) {
-  const order: BuildingId[] = ["walls", "dock", "forge", "hall"]
+  const order: BuildingId[] = ["shrine", "yard", "walls", "dock", "forge", "hall"]
   for (const part of order) {
     if (p[part] > 0) {
       p[part] -= 1

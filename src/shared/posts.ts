@@ -64,5 +64,5 @@ export function nearestPost(here: { lat: number; lng: number }, maxMeters = 180)
 
 export function postSpeech(meters: number): string {
   const dist = meters < 950 ? `${Math.max(50, Math.round(meters / 10) * 10)} metres` : `${(meters / 1000).toFixed(1)} kilometres`
-  return `A trading post offers rest ${dist} ahead. Gas station.`
+  return `A mead hall offers rest ${dist} ahead. Gas station.`
 }

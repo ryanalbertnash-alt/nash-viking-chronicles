@@ -160,7 +160,7 @@ export function WarMap({
       put(`report:${report.id}`, report.lng, report.lat, node, "bottom")
     }
     for (const post of TRADING_POSTS) {
-      const node = nodeOf(`<div class="pin post-mark" data-sig="${post.id}"><div class="label"><b>${escapeHtml(post.title)}</b><small>Gas station</small></div><img class="mark" alt="" src="${asset("marks/tavern.svg")}" /></div>`)
+      const node = nodeOf(`<div class="pin post-mark" data-sig="${post.id}"><div class="label"><b>${escapeHtml(post.title)}</b><small>Mead hall · Gas station</small></div><img class="mark" alt="" src="${asset("marks/tavern.svg")}" /></div>`)
       node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onPost(post.id) })
       put(`post:${post.id}`, post.lng, post.lat, node, "bottom")
     }

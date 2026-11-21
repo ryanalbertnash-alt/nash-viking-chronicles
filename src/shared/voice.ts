@@ -15,7 +15,7 @@ export type VoiceCommand =
   | { type: "warband" }
   | { type: "shop" }
   | { type: "board" }
-  | { type: "build"; part: "hall" | "forge" | "walls" | "dock" }
+  | { type: "build"; part: "hall" | "forge" | "walls" | "dock" | "yard" | "shrine" }
   | { type: "raise"; cls: "infantry" | "archer" | "cavalry" | "monster" }
   | { type: "craft"; key: string }
   | { type: "mute" }
@@ -73,6 +73,8 @@ function parseBody(s: string): VoiceCommand {
   if (/\bbuild\b|\braise\b/.test(s) && /\bforge\b/.test(s)) return { type: "build", part: "forge" }
   if (/\bbuild\b|\braise\b/.test(s) && /\bwall/.test(s)) return { type: "build", part: "walls" }
   if (/\bbuild\b|\braise\b/.test(s) && /\bdock\b|\blongship dock\b/.test(s)) return { type: "build", part: "dock" }
+  if (/\bbuild\b|\braise\b/.test(s) && /\b(shrine|bone pit|ancestors)\b/.test(s)) return { type: "build", part: "shrine" }
+  if (/\bbuild\b|\braise\b/.test(s) && /\b(yard|muster yard)\b/.test(s)) return { type: "build", part: "yard" }
   if (/\bbuild\b|\braise\b/.test(s) && /\bhall\b/.test(s)) return { type: "build", part: "hall" }
   if (/\braise\b|\bmuster\b/.test(s) && /\b(archers?|bows?|arrers)\b/.test(s)) return { type: "raise", cls: "archer" }
   if (/\braise\b|\bmuster\b/.test(s) && /\b(rider|riders|cavalry|boar)\b/.test(s)) return { type: "raise", cls: "cavalry" }
@@ -130,7 +132,7 @@ function roadKind(s: string): ReportType | null {
   if (/\bweather\b|\bflood\b|\bsnow\b|\bstorm spirit\b/.test(s)) return "weather"
   if (/\bstopped (vehicle|car|truck)\b|\bhorse\b|\bcarriage\b|\bbroken down\b/.test(s)) return "stopped"
   if (/\bobject\b|\bdebris\b|\bboulder\b|\btreasure\b|\bchest\b/.test(s)) return "object"
-  if (/\bhazard\b|\btrap\b/.test(s)) return "hazard"
+  if (/\bhazard\b|\btrap\b|\bambush\b/.test(s)) return "hazard"
   return null
 }
 

@@ -142,6 +142,8 @@ export const BUILDINGS: Record<BuildingId, { name: string; costs: number[]; text
   forge: { name: "Forge", costs: [90, 210, 420], text: "Unlocks archers. Crafts axes, bows, spears, and mail from gold. At level 2, with the hall, the yard can hold a monster." },
   walls: { name: "Walls and towers", costs: [110, 260, 500], text: "A palisade, then towers that shoot during a siege, then a keep. Defense when the war comes to your town or your hall." },
   dock: { name: "Longship Dock", costs: [150, 340, 640], text: "Unlocks cavalry and the longship. Shore towns can be raided. Higher docks hit harder from the water." },
+  yard: { name: "Muster yard", costs: [80, 180, 360], text: "Where the companies drill. Each level raises the cap on infantry, bows, and riders. Level 2 can raise riders without a dock." },
+  shrine: { name: "Shrine", costs: [100, 220, 440], text: "Ancestor stones for the Nash, a bone pit for the Grogs. Level 1 lets you raise a monster. Higher levels harden the army in a siege." },
 }
 
 export const PASS_TIERS: { xp: number; freeGold: number; premItem?: string; premGold?: number }[] = [
@@ -219,10 +221,10 @@ export function itemPrice(id: string, now = Date.now()): number {
   return item.price
 }
 
-export function buildingWorth(p: { hall: number; forge: number; walls: number; dock: number }): number {
+export function buildingWorth(p: { hall: number; forge: number; walls: number; dock: number; yard?: number; shrine?: number }): number {
   let worth = 0
-  for (const key of ["hall", "forge", "walls", "dock"] as const) {
-    for (let i = 0; i < p[key]; i++) worth += BUILDINGS[key].costs[i] ?? 0
+  for (const key of ["hall", "forge", "walls", "dock", "yard", "shrine"] as const) {
+    for (let i = 0; i < (p[key] ?? 0); i++) worth += BUILDINGS[key].costs[i] ?? 0
   }
   return worth
 }

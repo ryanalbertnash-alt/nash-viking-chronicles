@@ -7,11 +7,17 @@ export type Company = { cls: UnitClass; strength: number; xp: number }
 
 export const UNIT_ORDER: UnitClass[] = ["infantry", "archer", "cavalry", "monster"]
 
-export const UNIT_INFO: Record<UnitClass, { title: string; viking: string; grog: string; beats: UnitClass; blurb: string }> = {
-  infantry: { title: "Infantry", viking: "Huscarls", grog: "Boyz", beats: "cavalry", blurb: "Spears and shields. They stop a charge." },
-  archer: { title: "Archers", viking: "Bowmen", grog: "Arrer boyz", beats: "infantry", blurb: "Shafts land before the lines meet." },
-  cavalry: { title: "Cavalry", viking: "Riders", grog: "Boar riders", beats: "archer", blurb: "They close before the volley is finished." },
-  monster: { title: "Monster", viking: "Jotun", grog: "Troll", beats: "infantry", blurb: "A body the shield wall cannot hold. Shafts hurt it." },
+export const UNIT_INFO: Record<UnitClass, { title: string; viking: string; grog: string; beats: UnitClass; blurb: string; attack: number; defense: number; hp: number }> = {
+  infantry: { title: "Infantry", viking: "Huscarls", grog: "Boyz", beats: "cavalry", blurb: "Spears and shields. They stop a charge.", attack: 8, defense: 12, hp: 14 },
+  archer: { title: "Archers", viking: "Bowmen", grog: "Arrer boyz", beats: "infantry", blurb: "Shafts land before the lines meet.", attack: 11, defense: 5, hp: 8 },
+  cavalry: { title: "Cavalry", viking: "Riders", grog: "Boar riders", beats: "archer", blurb: "They close before the volley is finished.", attack: 12, defense: 7, hp: 11 },
+  monster: { title: "Monster", viking: "Jotun", grog: "Troll", beats: "infantry", blurb: "A body the shield wall cannot hold. Shafts hurt it.", attack: 16, defense: 9, hp: 22 },
+}
+
+export function unitStats(faction: Faction | null, cls: UnitClass): { attack: number; defense: number; hp: number } {
+  const base = UNIT_INFO[cls]
+  if (faction === "grog") return { attack: base.attack + 2, defense: Math.max(1, base.defense - 1), hp: base.hp }
+  return { attack: base.attack, defense: base.defense + 2, hp: base.hp }
 }
 
 const CAVALRY = new Set(["jesse", "jayden", "krull", "billy", "zug"])
@@ -50,18 +56,20 @@ export function matchLine(atkName: string, atk: UnitClass, defName: string, def:
 
 export type Unlock = { ok: true; cap: number; cost: number } | { ok: false; why: string }
 
-export function companyUnlock(buildings: { hall: number; forge: number; walls: number; dock: number }, cls: UnitClass): Unlock {
-  if (cls === "infantry") return { ok: true, cap: 36 + buildings.hall * 22, cost: 40 }
+export function companyUnlock(buildings: { hall: number; forge: number; walls: number; dock: number; yard?: number; shrine?: number }, cls: UnitClass): Unlock {
+  const yard = buildings.yard ?? 0
+  const shrine = buildings.shrine ?? 0
+  if (cls === "infantry") return { ok: true, cap: 36 + buildings.hall * 22 + yard * 12, cost: 40 }
   if (cls === "archer") {
     if (buildings.forge < 1) return { ok: false, why: "The forge unlocks archers. Raise it, then muster the bows." }
-    return { ok: true, cap: 24 + buildings.forge * 16, cost: 70 }
+    return { ok: true, cap: 24 + buildings.forge * 16 + yard * 8, cost: 70 }
   }
   if (cls === "cavalry") {
-    if (buildings.dock < 1) return { ok: false, why: "The dock unlocks cavalry. Raise it, then muster the riders." }
-    return { ok: true, cap: 20 + buildings.dock * 14, cost: 90 }
+    if (buildings.dock < 1 && yard < 2) return { ok: false, why: "Riders need the dock, or a muster yard at level 2." }
+    return { ok: true, cap: 20 + buildings.dock * 14 + yard * 8, cost: 90 }
   }
-  if (buildings.hall < 2 || buildings.forge < 2) return { ok: false, why: "A monster needs a hall and a forge both at level 2." }
-  return { ok: true, cap: 70 + buildings.forge * 8, cost: 160 }
+  if (shrine < 1 && (buildings.hall < 2 || buildings.forge < 2)) return { ok: false, why: "A monster needs the shrine, or a hall and a forge both at level 2." }
+  return { ok: true, cap: 70 + buildings.forge * 8 + shrine * 10, cost: 160 }
 }
 
 export const RECIPES: { key: string; label: string; forge: number; gold: number; itemId?: string; grogItem?: string; mail?: boolean; faction?: Faction }[] = [
