@@ -1,21 +1,23 @@
 import { haversine } from "../src/shared/geo.ts"
 import { usualLimit } from "../src/shared/limits.ts"
 import type { NavPlan, NavStep } from "../src/shared/nav.ts"
-import { towns } from "../src/shared/catalog.ts"
+import { searchPlacesLocal } from "./places.ts"
 
-export type Place = { name: string; lat: number; lng: number }
+export type Place = { id?: string; name: string; lat: number; lng: number }
 
 const UA = "NashVikingChronicles/0.1 (location game; chesterville)"
 
 export async function searchPlaces(query: string): Promise<Place[]> {
   const q = query.trim()
   if (q.length < 2) return []
-  const local = towns
-    .filter((t) => t.name.toLowerCase().includes(q.toLowerCase()))
-    .slice(0, 5)
-    .map((t) => ({ name: `${t.name}, Ontario`, lat: t.lat, lng: t.lng }))
+  const local = searchPlacesLocal(q, 6).map((t) => ({
+    id: t.id,
+    name: `${t.name}, ${t.country === "CA" ? "Canada" : "United States"}`,
+    lat: t.lat,
+    lng: t.lng,
+  }))
   if (local.length) return local
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=ca&q=${encodeURIComponent(q + ", Ontario")}`
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=ca,us&q=${encodeURIComponent(q)}`
   const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" } })
   if (!res.ok) return []
   const rows = (await res.json()) as { display_name?: string; lat: string; lon: string }[]
@@ -36,6 +38,58 @@ export async function roadAt(lat: number, lng: number): Promise<{ road: string; 
 }
 
 export async function buildRoute(from: { lat: number; lng: number }, to: { lat: number; lng: number }, label: string): Promise<NavPlan> {
+  try {
+    return await valhallaRoute(from, to, label)
+  } catch {
+    return osrmRoute(from, to, label)
+  }
+}
+
+async function osrmRoute(from: { lat: number; lng: number }, to: { lat: number; lng: number }, label: string): Promise<NavPlan> {
+  const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson&steps=true`
+  const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" } })
+  if (!res.ok) throw new Error("The road-finder did not answer.")
+  const json = (await res.json()) as {
+    code?: string
+    routes?: { distance: number; duration: number; geometry: { coordinates: [number, number][] }; legs: { steps: { name?: string; maneuver: { location: [number, number]; type?: string; modifier?: string }; distance: number }[] }[] }[]
+  }
+  const route = json.routes?.[0]
+  if (!route) throw new Error("No road between those points.")
+  const coords = route.geometry.coordinates
+  const at = cumulative(coords)
+  let walked = 0
+  const steps: NavStep[] = []
+  for (const step of route.legs[0]?.steps ?? []) {
+    const i = nearestIndex(coords, step.maneuver.location)
+    const road = step.name ?? ""
+    const say = maneuverSay(step.maneuver.type, step.maneuver.modifier, road)
+    steps.push({ at: at[i] ?? walked, lat: coords[i][1], lng: coords[i][0], say, road, limit: usualLimit(road).kmh })
+    walked += step.distance
+  }
+  return { label, coords, steps, meters: Math.round(route.distance), seconds: Math.round(route.duration) }
+}
+
+function maneuverSay(type: string | undefined, modifier: string | undefined, road: string): string {
+  const onto = road ? ` onto ${road}` : ""
+  if (type === "arrive") return "You have arrived."
+  if (type === "depart") return road ? `Head onto ${road}.` : "Head out."
+  if (type === "roundabout" || type === "rotary") return `Take the roundabout${onto}.`
+  const turn = (modifier ?? "straight").replace(/-/g, " ")
+  if (turn === "straight") return road ? `Continue onto ${road}.` : "Continue straight."
+  return `Turn ${turn}${onto}.`
+}
+
+function nearestIndex(coords: [number, number][], location: [number, number]): number {
+  let best = 0
+  let bestD = Infinity
+  for (let i = 0; i < coords.length; i++) {
+    const d = (coords[i][0] - location[0]) ** 2 + (coords[i][1] - location[1]) ** 2
+    if (d < bestD) { bestD = d; best = i }
+  }
+  return best
+}
+
+async function valhallaRoute(from: { lat: number; lng: number }, to: { lat: number; lng: number }, label: string): Promise<NavPlan> {
   const body = {
     locations: [
       { lat: from.lat, lon: from.lng },

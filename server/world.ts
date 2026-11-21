@@ -1,5 +1,6 @@
 import {
   BUILDINGS,
+  champions,
   CLAIM_RADIUS,
   ATTACK_RADIUS,
   PASS_TIERS,
@@ -12,11 +13,12 @@ import {
   championById,
   itemById,
   itemPrice,
-  townById,
   towns,
   warbandCap,
 } from "../src/shared/catalog.ts"
+import { MOVE_COOLDOWN_MS, RIVAL_METERS, WELCOME_GOLD, freshQuests, idlePurse, idleRate, marchSeconds, questDay } from "../src/shared/hearth.ts"
 import { formatMeters, haversine, homeSpot, nearestOnLine, offsetMeters, pointAlong, routeLength } from "../src/shared/geo.ts"
+import { nearestPlace, resolveTown as townById } from "./places.ts"
 import { nearestPost } from "../src/shared/posts.ts"
 import { RECIPES, UNIT_INFO, championClass, companyUnlock, counter, matchLine, unitName, unitStats, type UnitClass } from "../src/shared/army.ts"
 import { REPORT_INFO, type ReportType } from "../src/shared/reports.ts"
@@ -28,6 +30,8 @@ import type {
   Faction,
   GameEvent,
   GameState,
+  March,
+  MarchKind,
   Player,
   PrivateYou,
   PublicPlayer,
@@ -123,6 +127,20 @@ export function normalize(state: GameState): GameState {
     if (typeof p.yard !== "number") p.yard = 0
     if (typeof p.shrine !== "number") p.shrine = 0
     if (!Array.isArray(p.seenTowns)) p.seenTowns = []
+    if (!p.homePlaceId) p.homePlaceId = null
+    if (!p.movedAt) p.movedAt = p.createdAt || Date.now()
+    if (!Array.isArray(p.marches)) p.marches = []
+    if (!p.questDay) p.questDay = ""
+    if (!Array.isArray(p.quests)) p.quests = []
+    if (!p.idleAt) p.idleAt = Date.now()
+    if (!p.inviteCode) p.inviteCode = inviteCode()
+    if (!Array.isArray(p.friends)) p.friends = []
+    if (!Array.isArray(p.rivals)) p.rivals = []
+    if (typeof p.roadMeters !== "number") p.roadMeters = 0
+    if (typeof p.roadNext !== "number") p.roadNext = 1800
+    if (typeof p.roadDriving !== "boolean") p.roadDriving = false
+    if (typeof p.roadQuest !== "number") p.roadQuest = 0
+    if (!Array.isArray(p.notices)) p.notices = []
     delete (p as { sub?: unknown }).sub
   }
   return state
@@ -173,7 +191,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     return { token, playerId: id }
   }
 
-  function choose(playerId: string, input: { faction: Faction; startTownId?: string; lat?: number; lng?: number }): ActionResult {
+  function choose(playerId: string, input: { faction: Faction; startTownId?: string; placeId?: string; lat?: number; lng?: number }): ActionResult {
     const p = player(playerId)
     if (!p) return { error: "You are not on the saga." }
     if (p.faction) return { error: "The oath is already sworn." }
@@ -182,18 +200,31 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     let homeLng = 0
     let standLat = 0
     let standLng = 0
-    if (typeof input.lat === "number" && typeof input.lng === "number") {
-      if (input.lat < 44.35 || input.lat > 45.75 || input.lng > -74.25 || input.lng < -76.45) {
-        return { error: "That spot is outside the Seaway saga. Start in Chesterville, Morrisburg, or Cornwall." }
-      }
-      const spot = homeSpot({ lat: input.lat, lng: input.lng }, p.id)
+    let homePlaceId: string | null = null
+    let homePlaceName = "Chesterville"
+    if (input.placeId) {
+      const place = townById(input.placeId)
+      if (!place) return { error: "That town is not on the map of Canada and the United States." }
+      const spot = homeSpot(place, p.id)
       homeLat = spot.lat
       homeLng = spot.lng
-      standLat = input.lat
-      standLng = input.lng
+      standLat = place.lat
+      standLng = place.lng
+      homePlaceId = place.id
+      homePlaceName = place.name
+    } else if (typeof input.lat === "number" && typeof input.lng === "number") {
+      const place = nearestPlace(input.lat, input.lng, 40000)
+      if (!place) return { error: "No town in Canada or the United States is close enough. Search for your town." }
+      const spot = homeSpot(place, p.id)
+      homeLat = spot.lat
+      homeLng = spot.lng
+      standLat = place.lat
+      standLng = place.lng
+      homePlaceId = place.id
+      homePlaceName = place.name
     } else {
       if (!input.startTownId || !START_TOWNS.includes(input.startTownId as (typeof START_TOWNS)[number])) {
-        return { error: "Pick Chesterville, Morrisburg, or Cornwall." }
+        return { error: "Pick a town in Canada or the United States." }
       }
       const town = townById(input.startTownId)!
       const spot = homeSpot(town, p.id)
@@ -201,6 +232,8 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       homeLng = spot.lng
       standLat = town.lat
       standLng = town.lng
+      homePlaceId = town.id
+      homePlaceName = town.name
     }
     const starterId = input.faction === "viking" ? "ryan" : "gorgrath"
     const starter = championById(starterId)!
@@ -209,7 +242,11 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     p.lng = standLng
     p.homeLat = homeLat
     p.homeLng = homeLng
+    p.homePlaceId = homePlaceId
     p.villageName = input.faction === "viking" ? `${p.name}'s Hall` : `${p.name}'s Camp`
+    p.hall = 1
+    p.movedAt = Date.now()
+    p.idleAt = Date.now()
     p.gold = 180
     p.np = 250
     p.champions = [{ id: starterId, level: 1, xp: 0, hp: starter.health, weaponId: null }]
@@ -219,28 +256,65 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     p.inventory = [{ id: "field-poultice", qty: 1 }]
     p.lastSeen = Date.now()
     const who = input.faction === "viking" ? "Ryan Nash marches with you, and a company of huscarls." : "Gorgrath Skullsplitter marches with you, and a mob of boyz."
-    const text = `${p.name} swears to the ${input.faction === "viking" ? "Nash clan" : "Grogs"}. ${who} Raise the forge for archers, the dock for riders. A field poultice is in the satchel. Recovery word: ${p.recovery}.`
-    saga(`${p.name} raises a ${input.faction === "viking" ? "hall" : "camp"} on the Seaway.`)
+    const rivals = linkRivals(p)
+    const rivalNote = rivals.length ? ` ${rivals.join(" and ")} hold ground nearby. A rivalry begins.` : ""
+    const text = `${p.name} swears to the ${input.faction === "viking" ? "Nash clan" : "Grogs"} and founds a longhouse in ${homePlaceName}. ${who}${rivalNote} Raise the forge for archers, the dock for riders. A field poultice is in the satchel. Recovery word: ${p.recovery}.`
+    saga(`${p.name} founds a ${input.faction === "viking" ? "hall" : "camp"} in ${homePlaceName}.`)
     return { event: event(text, "good") }
   }
 
-  function setPos(playerId: string, pos: { lat: number; lng: number; heading: number; speed: number }) {
+  function linkRivals(p: Player): string[] {
+    const names: string[] = []
+    for (const other of Object.values(state.players)) {
+      if (other.id === p.id || other.isAI || !other.faction) continue
+      if (haversine({ lat: p.homeLat, lng: p.homeLng }, { lat: other.homeLat, lng: other.homeLng }) > RIVAL_METERS) continue
+      if (!p.rivals.includes(other.id)) p.rivals.push(other.id)
+      if (!other.rivals.includes(p.id)) other.rivals.push(p.id)
+      names.push(other.name)
+    }
+    return names
+  }
+
+  function setPos(playerId: string, pos: { lat: number; lng: number; heading: number; speed: number }): GameEvent[] {
     const p = player(playerId)
-    if (!p || p.faction == null) return
-    if (!Number.isFinite(pos.lat) || !Number.isFinite(pos.lng)) return
+    if (!p || p.faction == null) return []
+    if (!Number.isFinite(pos.lat) || !Number.isFinite(pos.lng)) return []
+    const prev = { lat: p.lat, lng: p.lng }
     p.lat = pos.lat
     p.lng = pos.lng
     p.heading = Number.isFinite(pos.heading) ? pos.heading : p.heading
-    p.speed = Math.max(0, Math.min(200, pos.speed || 0))
+    p.speed = Math.max(0, Math.min(220, pos.speed || 0))
     p.lastSeen = Date.now()
+    const out: GameEvent[] = []
+    const driving = p.speed > 10
+    if (driving && !p.roadDriving) {
+      p.roadDriving = true
+      p.roadQuest = 3
+      p.roadMeters = 0
+      p.roadNext = 1500 + Math.floor(rng() * 1200)
+      out.push(event("Adventure. The road takes the tale. Keep your hands on the wheel. I will speak what finds you.", "info"))
+    } else if (!driving && p.roadDriving) {
+      p.roadDriving = false
+      out.push(event("The longhouse takes you back. What you won on the road is already in the hall.", "info"))
+    }
+    if (driving) {
+      const step = haversine(prev, p)
+      if (step > 0 && step < 4000) p.roadMeters += step
+      if (p.roadMeters >= p.roadNext) {
+        p.roadMeters = 0
+        p.roadNext = 1500 + Math.floor(rng() * 1400)
+        out.push(roadEncounter(p))
+      }
+    }
+    return out
   }
 
-  function recruit(playerId: string, townId: string): ActionResult {
+  function recruit(playerId: string, townId: string, remote = false): ActionResult {
     const p = mustHuman(playerId)
     if ("error" in p) return p
     const town = townById(townId)
     if (!town) return { error: "No such town." }
-    const near = distanceError(p, town, CLAIM_RADIUS)
+    const near = remote ? null : distanceError(p, town, CLAIM_RADIUS)
     if (near) return near
     if (!town.guardianId) return { error: `${town.name} has no champion waiting.` }
     const guard = championById(town.guardianId)!
@@ -256,12 +330,12 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     return { event: event(text, "good") }
   }
 
-  function claim(playerId: string, townId: string, stance: Stance = "smash"): ActionResult {
+  function claim(playerId: string, townId: string, stance: Stance = "smash", remote = false): ActionResult {
     const p = mustHuman(playerId)
     if ("error" in p) return p
     const town = townById(townId)
     if (!town) return { error: "No such town." }
-    const near = distanceError(p, town, CLAIM_RADIUS)
+    const near = remote ? null : distanceError(p, town, CLAIM_RADIUS)
     if (near) return near
     const owner = townOwner(town.id)
     if (owner === p.id) return tribute(playerId, townId)
@@ -269,12 +343,12 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     return fight(p, null, town, "town", stance, "militia")
   }
 
-  function attackTown(playerId: string, townId: string, stance: Stance = "smash"): ActionResult {
+  function attackTown(playerId: string, townId: string, stance: Stance = "smash", remote = false): ActionResult {
     const p = mustHuman(playerId)
     if ("error" in p) return p
     const town = townById(townId)
     if (!town) return { error: "No such town." }
-    const near = distanceError(p, town, ATTACK_RADIUS)
+    const near = remote ? null : distanceError(p, town, ATTACK_RADIUS)
     if (near) return near
     const ownerId = townOwner(town.id)
     if (ownerId === p.id) return { error: `You already hold ${town.name}.` }
@@ -284,13 +358,13 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     return fight(p, defender, town, "town", stance, defender.walls >= 1 ? "siege" : "field")
   }
 
-  function attackPlayer(playerId: string, defenderId: string, stance: Stance = "smash"): ActionResult {
+  function attackPlayer(playerId: string, defenderId: string, stance: Stance = "smash", remote = false): ActionResult {
     const p = mustHuman(playerId)
     if ("error" in p) return p
     const defender = player(defenderId)
     if (!defender || defender.id === p.id) return { error: "There is no rival hall there." }
     const dist = haversine(p, { lat: defender.homeLat, lng: defender.homeLng })
-    if (dist > ATTACK_RADIUS) return { error: `${defender.villageName} is ${formatMeters(dist)} off. Ride closer.` }
+    if (!remote && dist > ATTACK_RADIUS) return { error: `${defender.villageName} is ${formatMeters(dist)} off. Ride closer.` }
     return fight(p, defender, undefined, "village", stance, "home")
   }
 
@@ -335,7 +409,8 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       : part === "yard" && p.yard === 1 ? " The companies can drill harder."
       : part === "shrine" && p.shrine === 1 ? " A monster can now be raised here."
       : ""
-    const text = `${def.name} rises to level ${p[part]} at ${p.villageName}.${opened}`
+    const deed = bumpQuest(p, "build")
+    const text = `${def.name} rises to level ${p[part]} at ${p.villageName}.${opened}${deed}`
     saga(`${p.name} raises ${def.name.toLowerCase()} to level ${p[part]}.`)
     return { event: event(text, "good") }
   }
@@ -419,7 +494,8 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     p.gold -= cost
     if (have) have.strength = rule.cap
     else p.companies.push({ cls, strength: rule.cap, xp: 0 })
-    const text = `${unitName(p.faction, cls)} muster at ${p.villageName}. ${rule.cap} strong. ${UNIT_INFO[cls].blurb}`
+    const deed = bumpQuest(p, "train")
+    const text = `${unitName(p.faction, cls)} muster at ${p.villageName}. ${rule.cap} strong. ${UNIT_INFO[cls].blurb}${deed}`
     saga(`${p.name} raises ${unitName(p.faction, cls).toLowerCase()}.`)
     return { event: event(text, "good") }
   }
@@ -602,8 +678,261 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     return { event: event(`${hit.post.title} ${tended}. ${hit.post.brand}, ${hit.post.place}. Gas station. Twelve gold.`, "good") }
   }
 
+  function ensureQuests(p: Player, now = Date.now()) {
+    const day = questDay(now)
+    if (p.questDay !== day || !p.quests?.length) {
+      p.questDay = day
+      p.quests = freshQuests(day)
+    }
+  }
+
+  function bumpQuest(p: Player, kind: "build" | "train" | "march"): string {
+    ensureQuests(p)
+    const q = p.quests.find((item) => item.kind === kind && !item.claimed)
+    if (!q) return ""
+    q.progress += 1
+    if (q.progress < q.goal) return ""
+    q.claimed = true
+    p.gold += q.reward
+    return ` Daily deed done: ${q.title}. ${q.reward} gold.`
+  }
+
+  function finishRoad(p: Player, text: string, tone: GameEvent["tone"]): GameEvent {
+    if (p.roadQuest > 0) {
+      p.roadQuest -= 1
+      if (p.roadQuest === 0) {
+        p.gold += 80
+        text += " The road-quest is done. 80 gold comes home with the tale."
+        tone = "good"
+      }
+    }
+    return event(text, tone, text)
+  }
+
+  function roadFight(p: Player, kind: string, lead: string): GameEvent {
+    const atk = sideFromPlayer(p, "field", false)
+    const foe = kind === "monster" ? 78 : kind === "warband" ? 58 : 42
+    const win = atk.attack + rng() * 24 > foe
+    if (win) {
+      const gold = kind === "monster" ? 48 : kind === "warband" ? 36 : 28
+      p.gold += gold
+      p.wins += 1
+      if (kind === "monster") giveItem(p, "field-poultice", 1)
+      return finishRoad(p, `${lead} You break them. ${gold} gold is already in the hall.`, "good")
+    }
+    p.losses += 1
+    const lost = Math.min(p.gold, 12)
+    p.gold -= lost
+    return finishRoad(p, `${lead} They hit and run. You lose ${lost} gold. The warband is still standing.`, "bad")
+  }
+
+  function roadRecruit(p: Player): GameEvent {
+    const free = champions.filter((c) => c.faction === p.faction && !championHolder(c.id))
+    if (free.length && rng() < 0.4) {
+      const pick = free[Math.floor(rng() * free.length) % free.length]
+      p.champions.push({ id: pick.id, level: 1, xp: 0, hp: pick.health, weaponId: null })
+      if (p.warband.length < warbandCap(p.hall)) p.warband.push(pick.id)
+      return finishRoad(p, `${pick.name} finds you on the road and comes home to the hall.`, "good")
+    }
+    let company = p.companies.find((c) => c.cls === "infantry")
+    if (!company) {
+      company = { cls: "infantry", strength: 0, xp: 0 }
+      p.companies.push(company)
+    }
+    company.strength += 8
+    const who = p.faction === "grog" ? "Boyz" : "Huscarls"
+    return finishRoad(p, `${who} from the roadside join the levy and march home to the village.`, "good")
+  }
+
+  function roadEncounter(p: Player): GameEvent {
+    const roll = rng()
+    if (roll < 0.18) return roadFight(p, "ambush", "An ambush on the shoulder.")
+    if (roll < 0.36) return roadFight(p, "monster", "A beast crosses the road.")
+    if (roll < 0.55) {
+      const gold = 30 + Math.round(rng() * 40)
+      p.gold += gold
+      giveItem(p, "field-poultice", 1)
+      return finishRoad(p, `Treasure in the ditch. ${gold} gold and a poultice come home to the hall.`, "good")
+    }
+    if (roll < 0.72) return roadFight(p, "warband", "A rival war band bars the lane.")
+    if (roll < 0.88) {
+      const healed = healPool(p, 36)
+      p.gold += 18
+      return finishRoad(p, `A mead hall beside the road. The warband drinks. ${healed} wounds close. 18 gold comes home.`, "good")
+    }
+    return roadRecruit(p)
+  }
+
+  function march(playerId: string, input: { kind?: MarchKind; townId?: string; playerId?: string }): ActionResult {
+    const p = mustHuman(playerId)
+    if ("error" in p) return p
+    const kind: MarchKind = input.kind === "longship" || input.kind === "raven" ? input.kind : "warband"
+    if (p.marches.some((m) => m.kind === kind)) return { error: `Your ${kind === "warband" ? "war band" : kind === "raven" ? "raven" : "longship"} is already out.` }
+    if (kind === "longship" && p.dock < 1) return { error: "Raise a longship dock before the ship can leave." }
+    let targetTown = input.townId ? townById(input.townId) : null
+    let targetPlayer = input.playerId ? player(input.playerId) : null
+    if (input.townId && !targetTown) return { error: "No such town." }
+    if (input.playerId && (!targetPlayer || targetPlayer.id === p.id)) return { error: "There is no hall there." }
+    if (!targetTown && !targetPlayer) return { error: "Pick a town or a hall." }
+    if (kind === "longship" && targetPlayer && !targetTown) {
+      const held = state.towns.map((row) => townById(row.id)).find((t) => t && townOwner(t.id) === targetPlayer!.id)
+      if (held) targetTown = held
+    }
+    if (kind === "raven" && !targetTown) return { error: "The raven needs a town to look at." }
+    const to = targetTown ?? { lat: targetPlayer!.homeLat, lng: targetPlayer!.homeLng }
+    const from = { lat: p.homeLat, lng: p.homeLng }
+    const dist = haversine(from, to)
+    const near = haversine(p, to) <= (targetPlayer ? ATTACK_RADIUS : CLAIM_RADIUS)
+    if (kind === "warband" && near) {
+      if (targetPlayer) return attackPlayer(p.id, targetPlayer.id)
+      if (!targetTown) return { error: "No such town." }
+      if (townOwner(targetTown.id) === p.id) return recruit(p.id, targetTown.id)
+      if (townOwner(targetTown.id)) return attackTown(p.id, targetTown.id)
+      return claim(p.id, targetTown.id)
+    }
+    let order: March["order"] = "claim"
+    if (kind === "raven") order = "scout"
+    else if (kind === "longship" && targetTown) order = "raid"
+    else if (targetPlayer) order = "siege"
+    else if (targetTown && townOwner(targetTown.id) === p.id) order = "recruit"
+    else if (targetTown && townOwner(targetTown.id)) order = "attack"
+    else order = "claim"
+    if (order === "recruit" && targetTown) {
+      const guard = targetTown.guardianId ? championById(targetTown.guardianId) : undefined
+      if (!guard || guard.faction !== p.faction) return { error: `${targetTown.name} has no champion of your clan to fetch.` }
+    }
+    if (order === "raid" && targetTown && townOwner(targetTown.id) === p.id) return { error: `You already hold ${targetTown.name}.` }
+    const seconds = marchSeconds(dist, kind)
+    const now = Date.now()
+    const label = targetTown?.name ?? targetPlayer!.villageName
+    const row: March = {
+      id: nid("m"),
+      kind,
+      order,
+      targetTownId: targetTown?.id ?? null,
+      targetPlayerId: targetPlayer?.id ?? null,
+      label,
+      fromLat: from.lat,
+      fromLng: from.lng,
+      toLat: to.lat,
+      toLng: to.lng,
+      startedAt: now,
+      arriveAt: now + seconds * 1000,
+      stance: "smash",
+    }
+    p.marches.push(row)
+    const deed = bumpQuest(p, "march")
+    const noun = kind === "raven" ? "A raven" : kind === "longship" ? "The longship" : "The war band"
+    const text = `${noun} leaves ${p.villageName} for ${label}. ${formatMeters(dist)}, about ${seconds < 90 ? `${seconds} seconds` : `${Math.max(1, Math.round(seconds / 60))} minutes`}.${deed}`
+    saga(text)
+    return { event: event(text, "info", text) }
+  }
+
+  function resolveMarch(p: Player, row: March, present: boolean): ActionResult {
+    if (row.order === "scout" && row.targetTownId) {
+      const town = townById(row.targetTownId)
+      if (!town) return { error: "The raven found nothing." }
+      if (!p.seenTowns.includes(town.id)) p.seenTowns.push(town.id)
+      const holder = townOwner(town.id)
+      const who = holder ? `${player(holder)?.name ?? "A rival"} holds ${town.name}.` : `${town.name} is unclaimed.`
+      const gold = 12 + TOWN_POWER[town.kind].income * 3
+      p.gold += gold
+      p.scouts += 1
+      const text = `The raven returns from ${town.name}. ${who} ${gold} gold comes home.`
+      saga(`${p.name}'s raven scouts ${town.name}.`)
+      return { event: event(text, "good", text) }
+    }
+    if (row.order === "siege" && row.targetPlayerId) {
+      const outcome = attackPlayer(p.id, row.targetPlayerId, "smash", !present)
+      return prefixMarch(outcome, `${present ? "You reach" : "The war band reaches"} the hall.`)
+    }
+    const town = row.targetTownId ? townById(row.targetTownId) : null
+    if (!town) return { error: "The march found no town." }
+    if (row.order === "recruit") return prefixMarch(recruit(p.id, town.id, !present), `The war band reaches ${town.name}.`)
+    if (row.order === "raid") {
+      if (present) return attackTown(p.id, town.id)
+      const ownerId = townOwner(town.id)
+      const defender = ownerId ? player(ownerId) : null
+      return prefixMarch(fight(p, defender, town, "raid", "smash", defender && defender.walls >= 1 ? "siege" : defender ? "field" : "militia"), `The longship reaches ${town.name}.`)
+    }
+    if (townOwner(town.id) === p.id) return { event: event(`${town.name} is already yours. The company comes home.`, "info") }
+    if (townOwner(town.id)) return prefixMarch(attackTown(p.id, town.id, "smash", !present), `The war band reaches ${town.name}.`)
+    return prefixMarch(claim(p.id, town.id, "smash", !present), `The war band reaches ${town.name}.`)
+  }
+
+  function prefixMarch(outcome: ActionResult, lead: string): ActionResult {
+    if (!outcome.event) return outcome
+    const text = `${lead} ${outcome.event.text}`
+    return { ...outcome, event: { ...outcome.event, text, speech: text } }
+  }
+
+  function collectIdle(playerId: string, now = Date.now()): ActionResult {
+    const p = mustHuman(playerId)
+    if ("error" in p) return p
+    const gold = idlePurse(idleRate(p), p.idleAt, now)
+    if (gold < 1) return { error: "The hearth has not gathered a coin yet." }
+    p.gold += gold
+    p.idleAt = now
+    return { event: event(`The hearth pays ${gold} gold. It gathered while you were away.`, "good") }
+  }
+
+  function befriend(playerId: string, code: string): ActionResult {
+    const p = mustHuman(playerId)
+    if ("error" in p) return p
+    const token = code.trim().toUpperCase()
+    if (!token) return { error: "That invite link is empty." }
+    const host = Object.values(state.players).find((o) => o.inviteCode.toUpperCase() === token && !o.isAI)
+    if (!host) return { error: "No hall answers that invite." }
+    if (host.id === p.id) return { error: "That is your own invite." }
+    if (p.friends.includes(host.id)) return { event: event(`${host.name} is already at your hearth.`, "info") }
+    p.friends.push(host.id)
+    if (!host.friends.includes(p.id)) host.friends.push(p.id)
+    p.gold += WELCOME_GOLD
+    host.gold += WELCOME_GOLD
+    host.notices.push({ text: `${p.name} answers your invite. You each gain ${WELCOME_GOLD} gold.`, tone: "good" })
+    saga(`${p.name} joins ${host.name}'s hearth. Both gain ${WELCOME_GOLD} gold.`)
+    return { event: event(`${host.name} shares the hearth. You each gain ${WELCOME_GOLD} gold. Challenge them to a siege or a raid when you are ready.`, "good") }
+  }
+
+  function moveHome(playerId: string, placeId: string, now = Date.now()): ActionResult {
+    const p = mustHuman(playerId)
+    if ("error" in p) return p
+    const place = townById(placeId)
+    if (!place) return { error: "That town is not on the map." }
+    if (place.id === p.homePlaceId) return { error: `Your hall is already in ${place.name}.` }
+    if (p.movedAt && now - p.movedAt < MOVE_COOLDOWN_MS) {
+      const days = Math.ceil((MOVE_COOLDOWN_MS - (now - p.movedAt)) / 86400000)
+      return { error: `The hall can move once a month. ${days} days remain.` }
+    }
+    const spot = homeSpot(place, p.id + String(now))
+    p.homeLat = spot.lat
+    p.homeLng = spot.lng
+    p.homePlaceId = place.id
+    p.movedAt = now
+    linkRivals(p)
+    const text = `${p.villageName} is raised again in ${place.name}. The old ground is left behind.`
+    saga(`${p.name} moves the hall to ${place.name}.`)
+    return { event: event(text, "good") }
+  }
+
   function tick(now = Date.now()): { playerId: string; event: GameEvent }[] {
     const events: { playerId: string; event: GameEvent }[] = []
+    for (const p of Object.values(state.players)) {
+      if (p.isAI || !p.faction) continue
+      const keep: March[] = []
+      for (const row of p.marches ?? []) {
+        const present = haversine(p, { lat: row.toLat, lng: row.toLng }) <= CLAIM_RADIUS
+        if (now < row.arriveAt && !present) {
+          keep.push(row)
+          continue
+        }
+        const outcome = resolveMarch(p, row, present)
+        if (outcome.event) events.push({ playerId: p.id, event: outcome.event })
+      }
+      p.marches = keep
+      for (const note of p.notices) events.push({ playerId: p.id, event: event(note.text, note.tone, note.text) })
+      p.notices = []
+    }
     if (now - state.economyAt >= 30000) {
       state.economyAt = now
       for (const p of Object.values(state.players)) {
@@ -687,6 +1016,10 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     if (mode === "militia" && town) def = militiaSide(town, attacker.faction)
     else if (defender) def = sideFromPlayer(defender, mode === "home" ? "home" : mode === "siege" ? "siege" : "field", false)
     else def = militiaSide(town!, attacker.faction)
+    const stood = kind !== "raid" && (town
+      ? haversine(attacker, town) <= CLAIM_RADIUS
+      : !!defender && haversine(attacker, { lat: defender.homeLat, lng: defender.homeLng }) <= ATTACK_RADIUS)
+    if (stood) atk.attack *= 1.12
     const siege = mode === "home" || mode === "siege"
     const defenderName = defender?.name ?? def.name
     const rounds: BattleResult["rounds"] = []
@@ -756,7 +1089,7 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
           gold = Math.max(gold, steal)
         }
       } else {
-        gold = Math.round((wealth + 24) * (1 + atk.goldMod))
+        gold = Math.round((wealth + 24) * (1 + atk.goldMod) * (stood ? 2 : 1))
         if (defender && !defender.isAI) {
           const steal = Math.min(defender.gold, Math.round(defender.gold * 0.12))
           defender.gold -= steal
@@ -777,7 +1110,8 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     const xpNotes = [...addSeasonXp(attacker, win ? 80 : 35), ...grantChampXp(attacker)]
     const place = town?.name ?? defender?.villageName ?? "the field"
     const recruitId = win && town && kind === "town" ? freeRecruit(town, attacker) : undefined
-    const summary = `${bestLine ? `${bestLine} ` : ""}${narrate({
+    const stoodLine = stood && win ? "You stood on the ground. Double gold, and it falls now. " : ""
+    const summary = `${stoodLine}${bestLine ? `${bestLine} ` : ""}${narrate({
       faction: attacker.faction ?? "viking",
       win,
       place,
@@ -814,6 +1148,12 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       attackerChamps: atk.champs.map(({ cry: _cry, ...c }) => c),
       defenderChamps: def.champs.map(({ cry: _cry, ...c }) => c),
       recruitId,
+    }
+    if (defender && !defender.isAI && defender.id !== attacker.id) {
+      const note = win
+        ? `${attacker.name} took the field at ${place}.`
+        : `${attacker.name} was thrown back at ${place}.`
+      defender.notices.push({ text: note, tone: win ? "bad" : "good" })
     }
     return { result, event: event(summary, win ? "good" : "bad", summary) }
   }
@@ -1010,6 +1350,20 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       reports: state.reports,
       board: board(),
       season: SEASON_NAME,
+      marches: Object.values(state.players).flatMap((p) => (p.marches ?? []).map((m) => ({
+        id: m.id,
+        ownerId: p.id,
+        ownerName: p.name,
+        faction: p.faction ?? "viking",
+        kind: m.kind,
+        fromLat: m.fromLat,
+        fromLng: m.fromLng,
+        toLat: m.toLat,
+        toLng: m.toLng,
+        startedAt: m.startedAt,
+        arriveAt: m.arriveAt,
+        label: m.label,
+      }))),
     }
   }
 
@@ -1075,6 +1429,32 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       premTier: p.premTier,
       nextTierXp: next ? next.xp : null,
       townIds: state.towns.filter((t) => t.ownerId === p.id).map((t) => t.id),
+      homePlaceId: p.homePlaceId ?? null,
+      homePlaceName: p.homePlaceId ? (townById(p.homePlaceId)?.name ?? null) : null,
+      movedAt: p.movedAt ?? p.createdAt,
+      marches: (p.marches ?? []).map((m) => ({ id: m.id, kind: m.kind, label: m.label, arriveAt: m.arriveAt, startedAt: m.startedAt, toLat: m.toLat, toLng: m.toLng })),
+      quests: (ensureQuests(p), p.quests),
+      idleGold: idlePurse(idleRate(p), p.idleAt || p.createdAt, Date.now()),
+      inviteCode: p.inviteCode,
+      friendIds: p.friends ?? [],
+      rivalIds: p.rivals ?? [],
+      friends: (p.friends ?? []).map((id) => friendView(id)).filter((f): f is NonNullable<typeof f> => !!f),
+    }
+  }
+
+  function friendView(id: string) {
+    const other = player(id)
+    if (!other) return null
+    return {
+      id: other.id,
+      name: other.name,
+      faction: other.faction,
+      online: !other.isAI && Date.now() - other.lastSeen < 25000,
+      wins: other.wins,
+      raids: other.raids,
+      gold: other.gold,
+      townCount: state.towns.filter((t) => t.ownerId === other.id).length,
+      villageName: other.villageName,
     }
   }
 
@@ -1129,6 +1509,8 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
       skinId: p.skinId,
       leaderArt: p.skinId ? (itemById(p.skinId)?.art ?? leader?.art ?? null) : (leader?.art ?? null),
       townCount: state.towns.filter((t) => t.ownerId === p.id).length,
+      homePlaceId: p.homePlaceId ?? null,
+      homePlaceName: p.homePlaceId ? (townById(p.homePlaceId)?.name ?? null) : null,
     }
   }
 
@@ -1243,6 +1625,10 @@ export function createGame(state: GameState = freshState(), rng: () => number = 
     tribute,
     fileReport,
     confirmReport,
+    march,
+    collectIdle,
+    befriend,
+    moveHome,
     tick,
     publicWorld,
     privateYou,
@@ -1311,7 +1697,27 @@ function blankPlayer(partial: Partial<Player> & { id: string; name: string }): P
     lastBattleAt: 0,
     ai: partial.ai ?? null,
     createdAt: Date.now(),
+    homePlaceId: partial.homePlaceId ?? null,
+    movedAt: partial.movedAt ?? Date.now(),
+    marches: partial.marches ?? [],
+    questDay: partial.questDay ?? "",
+    quests: partial.quests ?? [],
+    idleAt: partial.idleAt ?? Date.now(),
+    inviteCode: partial.inviteCode ?? inviteCode(),
+    friends: partial.friends ?? [],
+    rivals: partial.rivals ?? [],
+    roadMeters: partial.roadMeters ?? 0,
+    roadNext: partial.roadNext ?? 1800,
+    roadDriving: partial.roadDriving ?? false,
+    roadQuest: partial.roadQuest ?? 0,
+    notices: partial.notices ?? [],
   }
+}
+
+function inviteCode(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+  const bytes = crypto.getRandomValues(new Uint8Array(6))
+  return [...bytes].map((b) => alphabet[b % alphabet.length]).join("")
 }
 
 function emptySide(name: string, faction: string): Side {

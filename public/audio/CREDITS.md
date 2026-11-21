@@ -2,13 +2,22 @@
 
 ## Music
 
-The six music beds are original compositions made for Nash's Viking Chronicles:
+The live soundtrack is original and generated in the browser with Web Audio. Nothing is sampled from a recording, a game, or a folk archive.
 
-- `explore-viking.mp3` and `explore-grog.mp3` — driving
-- `battle-viking.mp3` and `battle-grog.mp3` — a fight
-- `victory.mp3` and `defeat.mp3` — the result
+- Village: a slow drone, a plucked line in D dorian (the tagelharpa or lyre part), and a soft frame drum.
+- Map and adventure, while the wheels turn: a marching drum and horn fifths. It sits quieter than the village.
+- Battle: faster war drums, horn stabs, and a low two-note chant.
+- Victory and defeat: short horn stings.
 
-They are not taken from Warhammer or any other game. The game may bundle them. No royalty is due.
+The older files in `music/` (`explore-viking.mp3`, `explore-grog.mp3`, `battle-viking.mp3`, `battle-grog.mp3`, `victory.mp3`, `defeat.mp3`) are earlier original beds made for this game. The live score no longer plays them. They are not taken from Warhammer or any other game. No royalty is due.
+
+The volume slider and the mute cover the score, the effects, and the voices together. Any spoken line ducks the music.
+
+## Places
+
+Towns and villages outside the saga's own list come from the GeoNames gazetteer for Canada and the United States (feature class P). GeoNames is used under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/). Credit: GeoNames, https://www.geonames.org/
+
+Map tiles are OpenFreeMap (OpenStreetMap data, ODbL). Roads are routed live with Valhalla, and with OSRM if Valhalla does not answer. © OpenStreetMap contributors.
 
 ## Voices
 

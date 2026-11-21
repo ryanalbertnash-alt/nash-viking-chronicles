@@ -55,7 +55,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setLink("live")
         retry.current = 800
         const token = tokenRef.current
-        ws.send(JSON.stringify(token ? { t: "join", token } : { t: "join" }))
+        const invite = inviteFromUrl()
+        ws.send(JSON.stringify(token ? { t: "join", token, invite } : { t: "join", invite }))
       }
       ws.onmessage = (ev) => {
         const msg = JSON.parse(String(ev.data)) as {
@@ -126,4 +127,10 @@ export function useSession() {
   const ctx = useContext(Ctx)
   if (!ctx) throw new Error("session")
   return ctx
+}
+
+function inviteFromUrl() {
+  const match = location.pathname.match(/^\/join\/([A-Za-z0-9]+)/)
+  if (match) sessionStorage.setItem("nvc-invite", match[1].toUpperCase())
+  return sessionStorage.getItem("nvc-invite") ?? ""
 }

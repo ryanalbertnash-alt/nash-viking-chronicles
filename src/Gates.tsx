@@ -3,6 +3,7 @@ import { Art, asset } from "@/art"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { START_TOWNS, townById } from "@/shared/catalog.ts"
+import type { Faction } from "@/shared/types.ts"
 import { useSession } from "@/session"
 import { unlockMusic } from "@/audio"
 import { unlockSpeech } from "@/speech"
@@ -14,7 +15,10 @@ export function Gates() {
   const [returning, setReturning] = useState(false)
   const [start, setStart] = useState<(typeof START_TOWNS)[number]>("chesterville")
   const [note, setNote] = useState("")
-  const [gpsSpot, setGpsSpot] = useState<{ lat: number; lng: number } | null>(null)
+  const [clan, setClan] = useState<Faction | null>(null)
+  const [query, setQuery] = useState("")
+  const [hits, setHits] = useState<{ id?: string; name: string; lat: number; lng: number }[]>([])
+  const [home, setHome] = useState<{ id?: string; name: string; lat: number; lng: number } | null>(null)
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent)
   const installed = window.matchMedia("(display-mode: standalone)").matches
 
@@ -44,7 +48,7 @@ export function Gates() {
       <div className="gate-copy">
         <p className="eyebrow">Chesterville, Ontario</p>
         <h1><span>Nash's</span><span>Viking</span><span>Chronicles</span></h1>
-        <p className="lede">The real road is the warboard. Drive the towns. Meet the other warbands.</p>
+        <p className="lede">The real road is the warboard. Found a hall in your town, anywhere in Canada or the United States. Drive when you want the road to pay double.</p>
         <p className="fine">Designed by Ryan Nash. You lead a warband. The Nash clan and the Grogs are the champions you find on the road.</p>
         <p className="warn">Ontario law: a driver cannot hold a phone. Above 10 km/h the menus lock. Say “Hey Valhalla”, or hand the phone to a passenger.</p>
         {!window.isSecureContext && <p className="warn">Open the https address. A phone will not share its location or microphone on a plain http link.</p>}
@@ -71,34 +75,19 @@ export function Gates() {
           </form>
         )}
 
-        {phase === "faction" && (
+        {phase === "faction" && !clan && (
           <div>
-            <p className="fine">Where is your hall?</p>
-            <div className="starts">
-              {START_TOWNS.map((id) => (
-                <Button key={id} type="button" size="sm" variant={start === id ? "default" : "outline"} onClick={() => setStart(id)}>
-                  {townById(id)?.name}
-                </Button>
-              ))}
-              <Button type="button" size="sm" variant={gpsSpot ? "default" : "secondary"} onClick={() => {
-                unlock()
-                if (!navigator.geolocation) { setNote("This phone will not share a location. Pick a town."); return }
-                navigator.geolocation.getCurrentPosition((pos) => {
-                  setGpsSpot({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-                  setNote("Location locked. Now swear to a clan. The hall goes where you are, if you are in the Seaway.")
-                }, () => setNote("No location yet. Pick Chesterville, Morrisburg, or Cornwall."), { enableHighAccuracy: true, timeout: 8000 })
-              }}>{gpsSpot ? "Using this phone" : "Use this phone's location"}</Button>
-            </div>
+            <p className="fine">Swear first. Then the game finds your town.</p>
             <div className="faction-grid">
-              <button className="faction-card" onClick={() => { unlock(); send(gpsSpot ? { t: "choose", faction: "viking", ...gpsSpot } : { t: "choose", faction: "viking", startTownId: start }) }}>
+              <button className="faction-card" onClick={() => { unlock(); setClan("viking") }}>
                 <img className="bg" src={asset("scenes/wolves.jpg")} alt="" />
                 <Art className="face" file="champions/ryan.jpg" alt="Ryan Nash" />
                 <div>
                   <h2>Nash clan</h2>
-                  <p>Sixteen champions, from Ralph's great axe to Emma's spear. You start with Ryan Nash, warlord, axe and shield. A field poultice is in the satchel.</p>
+                  <p>You start with Ryan Nash, a longhouse, and a few huscarls. The rest of the clan is out in the towns.</p>
                 </div>
               </button>
-              <button className="faction-card" onClick={() => { unlock(); send(gpsSpot ? { t: "choose", faction: "grog", ...gpsSpot } : { t: "choose", faction: "grog", startTownId: start }) }}>
+              <button className="faction-card" onClick={() => { unlock(); setClan("grog") }}>
                 <div className="grog-mosaic" aria-hidden="true">
                   <img src={asset("scenes/orc-braids.jpg")} alt="" />
                   <img src={asset("scenes/orc-forest.jpg")} alt="" />
@@ -108,11 +97,54 @@ export function Gates() {
                 <Art className="face" file="champions/gorgrath.jpg" alt="Gorgrath Skullsplitter" />
                 <div>
                   <h2>The Grogs</h2>
-                  <p>Gorgrath Skullsplitter leads. Mog'Dura binds bone, and Urzog the Mountain still waits at Long Sault. You start with the warchief.</p>
+                  <p>Gorgrath Skullsplitter starts the camp with a mob of boyz. The other Grogs wait in their towns.</p>
                 </div>
               </button>
             </div>
           </div>
+        )}
+        {phase === "faction" && clan && (
+          <form className="stack" onSubmit={(e) => {
+            e.preventDefault()
+            void fetch(`/api/geocode?q=${encodeURIComponent(query)}`).then((r) => r.json()).then((rows) => setHits(rows as { id?: string; name: string; lat: number; lng: number }[]))
+          }}>
+            <p className="fine">Where is your hall? Use this phone, or search any city, town, or village in Canada or the United States.</p>
+            <div className="starts">
+              {START_TOWNS.map((id) => (
+                <Button key={id} type="button" size="sm" variant={start === id && !home ? "default" : "outline"} onClick={() => { setStart(id); setHome(null) }}>
+                  {townById(id)?.name}
+                </Button>
+              ))}
+              <Button type="button" size="sm" variant="secondary" onClick={() => {
+                unlock()
+                if (!navigator.geolocation) { setNote("This phone will not share a location. Search for your town."); return }
+                navigator.geolocation.getCurrentPosition(async (pos) => {
+                  const res = await fetch(`/api/nearest?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`)
+                  const place = await res.json() as { id?: string; name?: string; lat?: number; lng?: number } | null
+                  if (!place?.name || place.lat == null || place.lng == null) { setNote("No town in Canada or the United States is close. Search for yours."); return }
+                  setHome({ id: place.id, name: place.name, lat: place.lat, lng: place.lng })
+                  setNote(`The phone found ${place.name}.`)
+                }, () => setNote("Location is off. Search for your town. Chesterville is the saga's home if you want it."), { enableHighAccuracy: true, timeout: 8000 })
+              }}>Use this phone's location</Button>
+            </div>
+            <label className="stack">
+              <span className="fine">Search a town</span>
+              <Input className="name-field" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Vancouver, Dallas, Lubec, Chesterville…" />
+            </label>
+            <Button type="submit" size="sm" variant="outline">Find it</Button>
+            {hits.map((hit) => (
+              <button type="button" key={`${hit.id ?? hit.name}:${hit.lat}`} className="card" onClick={() => { setHome(hit); setNote(hit.name) }}>
+                <h3>{hit.name}</h3>
+              </button>
+            ))}
+            <Button type="button" size="lg" onClick={() => {
+              unlock()
+              const invite = sessionStorage.getItem("nvc-invite") ?? undefined
+              if (home?.id) send({ t: "choose", faction: clan, placeId: home.id, invite })
+              else if (home) send({ t: "choose", faction: clan, lat: home.lat, lng: home.lng, invite })
+              else send({ t: "choose", faction: clan, startTownId: start, invite })
+            }}>{home ? `Found the hall in ${home.name.split(",")[0]}` : `Found the hall in ${townById(start)?.name ?? "Chesterville"}`}</Button>
+          </form>
         )}
       </div>
     </main>

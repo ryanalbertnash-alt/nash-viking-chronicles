@@ -3,14 +3,16 @@ import { Volume2, VolumeX } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
-import { narrate, playSfx, playSting, playVoice, setDrivingAudio, setMusicBattle, setMusicFaction, setMusicLevel, setMusicMuted, unlockMusic } from "@/audio"
+import { narrate, playSfx, playSting, playVoice, setDrivingAudio, setMusicBattle, setMusicFaction, setMusicLevel, setMusicMuted, setMusicScene, unlockMusic } from "@/audio"
 import { asset } from "@/art"
-import { BattleView, HallPanel, RoadsPanel, SagaPanel, Sheet, ShopPanel, TownPanel, WarbandPanel } from "@/Panels"
+import { HallPanel, RoadsPanel, SagaPanel, Sheet, ShopPanel, TownPanel, WarbandPanel } from "@/Panels"
+import { VillageView } from "@/Village"
+import { Tabletop } from "@/Tabletop"
 import { WarMap } from "@/WarMap"
 import { LOCK_KMH, champions, itemById } from "@/shared/catalog.ts"
 import { formatMeters, haversine, pointAlong, projectRoute, routeLength } from "@/shared/geo.ts"
 import { driveRoutes, riverRoute } from "@/shared/routes.ts"
-import type { PublicPlayer, PublicTown, Stance } from "@/shared/types.ts"
+import type { BuildingId, PublicPlayer, PublicTown, Stance } from "@/shared/types.ts"
 import type { VoiceCommand } from "@/shared/voice.ts"
 import { nearestPost, postById, postSpeech, TRADING_POSTS } from "@/shared/posts.ts"
 import { REPORT_INFO, REPORT_TYPES, reportSpeech } from "@/shared/reports.ts"
@@ -19,7 +21,7 @@ import { matchName, parseCommand } from "@/shared/voice.ts"
 import { useSession } from "@/session"
 import { canListen, listenOnce, onCaption, setVoiceFaction, speak, startAmbient, unlockSpeech } from "@/speech"
 
-type Sheet = null | { kind: "town" | "hall" | "warband" | "shop" | "saga" | "roads" | "report" | "post"; id?: string }
+type Sheet = null | { kind: "town" | "hall" | "warband" | "shop" | "saga" | "roads" | "report" | "post" | "village"; id?: string }
 type Pending = { kind: "town" | "player"; id: string; action: "claim" | "attackTown" | "attackPlayer" }
 
 export function Play() {
@@ -54,6 +56,9 @@ function Board({
   const [nav, setNav] = useState<NavPlan | null>(null)
   const [query, setQuery] = useState("")
   const [hits, setHits] = useState<{ name: string; lat: number; lng: number }[]>([])
+  const [extraTowns, setExtraTowns] = useState<PublicTown[]>([])
+  const [clock, setClock] = useState(Date.now())
+  const [built, setBuilt] = useState<BuildingId | null>(null)
   const [level, setLevel] = useState(70)
   const [roadLimit, setRoadLimit] = useState<number | null>(null)
   const roadLimitRef = useRef<number | null>(null)
@@ -84,8 +89,37 @@ function Board({
 
   const route = driveRoutes.find((r) => r.id === routeId) ?? driveRoutes[0]
   const locked = speed > LOCK_KMH && !passenger
-  const nearest = nearestTown(pos, world.towns)
+  const mapTowns = [...world.towns, ...extraTowns.filter((t) => !world.towns.some((w) => w.id === t.id))]
+  const nearest = nearestTown(pos, mapTowns)
   const ahead = nextAhead(route.coordinates, sim.current.distance, sim.current.dir, world.towns)
+
+  useEffect(() => {
+    const id = window.setInterval(() => setClock(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    let settled = false
+    const park = () => {
+      if (settled) return
+      settled = true
+      const me = youRef.current
+      const home = { lat: me.homeLat, lng: me.homeLng, heading: 0 }
+      posRef.current = home
+      speedRef.current = 0
+      setPos(home)
+      setSpeed(0)
+      setFollow(true)
+      speak(`Longhouse. The hearth is lit in ${me.homePlaceName ?? "Chesterville"}. Send the war band from here.`, true)
+    }
+    if (!navigator.geolocation) { park(); return }
+    navigator.geolocation.getCurrentPosition(() => { settled = true }, park, { enableHighAccuracy: false, timeout: 4000, maximumAge: 60000 })
+  }, [])
+
+  useEffect(() => {
+    setMusicScene(speed > LOCK_KMH ? "march" : "village")
+    setMusicBattle(!!battle)
+  }, [speed, battle])
 
   useEffect(() => {
     onCaption(setCaption)
@@ -501,7 +535,7 @@ function Board({
     else runRef.current(cmd)
   }
 
-  const town = sheet?.kind === "town" ? world.towns.find((t) => t.id === sheet.id) : undefined
+  const town = sheet?.kind === "town" ? mapTowns.find((t) => t.id === sheet.id) : undefined
   const person = sheet?.kind === "hall" ? world.players.find((p) => p.id === sheet.id) : undefined
   const along = nav ? projectRoute(nav.coords, pos.lat, pos.lng) : null
   const limit = nav && along ? ([...nav.steps].reverse().find((s) => s.at <= along.along + 10)?.limit ?? 50) : roadLimit
@@ -522,9 +556,12 @@ function Board({
       <WarMap
         you={you}
         world={world}
+        places={extraTowns}
         pos={pos}
         follow={follow}
         moving={speed > 5}
+        speed={speed}
+        onPlaces={setExtraTowns}
         route={nav?.coords ?? route.coordinates}
         river={riverRoute}
         locked={locked}
@@ -579,7 +616,12 @@ function Board({
               <span> · {formatMeters(Math.max(0, nextTurn.at - (along?.along ?? 0)))}{eta != null ? ` · ETA ${eta} min` : ""}{nav ? ` · ${nav.label}` : ""}</span>
             </div>
           )}
-          {locked && <div className="banner">Hands on the wheel. Say Hey Valhalla. Passenger Mode opens the menus. Ontario does not allow a driver to hold this phone.</div>}
+          {locked && <div className="banner">Adventure. Hands on the wheel.</div>}
+          {!locked && you.marches.length > 0 && (
+            <div className="banner">
+              {you.marches.map((m) => <span key={m.id}>{m.kind} · {m.label} · {Math.max(0, Math.ceil((m.arriveAt - clock) / 1000))}s </span>)}
+            </div>
+          )}
         </div>
 
         <div />
@@ -627,11 +669,13 @@ function Board({
               <Switch checked={passenger} onCheckedChange={setPassenger} aria-label="Passenger mode" />
               Passenger
             </label>
+            {locked && <Button className="big-stop" onClick={hold}>Pull over</Button>}
           </div>
           {!locked && (
             <>
             <Button onClick={() => setSheet({ kind: "report" })}>Mark the road</Button>
             <div className="dock">
+              <button onClick={() => setSheet({ kind: "village" })}>Village</button>
               <button onClick={() => setSheet({ kind: "hall", id: you.id })}>Hall</button>
               <button onClick={() => setSheet({ kind: "warband" })}>Warband</button>
               <button onClick={() => setSheet({ kind: "roads" })}>Roads</button>
@@ -642,15 +686,18 @@ function Board({
           )}
         </div>
 
+        {!locked && sheet?.kind === "village" && (
+          <VillageView you={you} pulse={built} onClose={() => setSheet(null)} onBuild={(part) => { setBuilt(part); send({ t: "do", action: "build", part }); window.setTimeout(() => setBuilt(null), 2800) }} />
+        )}
         {!locked && sheet?.kind === "town" && town && (
-          <TownPanel town={town} you={you} world={world} send={send} onClose={() => setSheet(null)} onStance={() => consider(town.ownerId && town.ownerId !== you.id ? { kind: "town", id: town.id, action: "attackTown" } : { kind: "town", id: town.id, action: "claim" })} />
+          <TownPanel town={town} you={you} world={world} send={send} near={haversine(pos, town) < 1000} onClose={() => setSheet(null)} onStance={() => consider(town.ownerId && town.ownerId !== you.id ? { kind: "town", id: town.id, action: "attackTown" } : { kind: "town", id: town.id, action: "claim" })} />
         )}
         {!locked && sheet?.kind === "hall" && person && (
           <HallPanel person={person} you={you} world={world} send={send} onClose={() => setSheet(null)} onAttack={() => consider({ kind: "player", id: person.id, action: "attackPlayer" })} onLeave={person.id === you.id ? signOut : undefined} />
         )}
         {!locked && sheet?.kind === "warband" && <WarbandPanel you={you} send={send} onClose={() => setSheet(null)} />}
         {!locked && sheet?.kind === "shop" && <ShopPanel you={you} send={send} onClose={() => setSheet(null)} />}
-        {!locked && sheet?.kind === "saga" && <SagaPanel world={world} onClose={() => setSheet(null)} />}
+        {!locked && sheet?.kind === "saga" && <SagaPanel world={world} you={you} send={send} onClose={() => setSheet(null)} />}
         {!locked && sheet?.kind === "roads" && (
           <RoadsPanel
             routeId={routeId}
@@ -711,7 +758,7 @@ function Board({
         )}
       </div>
 
-      {battle && <BattleView battle={battle} onClose={() => {
+      {battle && <Tabletop battle={battle} auto={locked} onClose={() => {
         const done = battle
         setBattle(undefined)
         playSting(done.win)

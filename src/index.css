@@ -424,7 +424,6 @@ select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b
 .maplibregl-map { background: #0c0a08; }
 .maplibregl-canvas {
   background: #0c0a08;
-  filter: grayscale(0.45) brightness(0.42) contrast(1.2) sepia(0.35);
 }
 .maplibregl-ctrl-bottom-left,
 .maplibregl-ctrl-bottom-right { top: 132px; bottom: auto; right: 8px; max-width: 70%; }
@@ -448,6 +447,48 @@ select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b
 }
 .dialog-card h3 { font-family: Cinzel, Palatino, serif; margin: 0 0 8px; }
 
+.mount-token { display: flex; flex-direction: column; align-items: center; width: 78px; z-index: 5; }
+.mount-token .bob { position: relative; width: 78px; height: 56px; }
+.mount-token .beast { width: 78px; height: 48px; filter: drop-shadow(0 3px 2px rgba(0,0,0,.75)); }
+.mount-token .face { position: absolute; left: 34px; top: 0; width: 18px; height: 18px; border-radius: 50%; object-fit: cover; border: 1px solid var(--gold); }
+.mount-token.friend { filter: drop-shadow(0 0 4px var(--gold)); }
+.mount-token.trot .bob { animation: gallop 0.55s ease-in-out infinite; }
+.mount-token.gallop .bob { animation: gallop 0.28s ease-in-out infinite; }
+@keyframes gallop { 50% { transform: translateY(-5px); } }
+.big-stop { min-height: 64px; min-width: 140px; font-size: 18px; }
+
+.village, .tabletop { position: absolute; inset: 0; z-index: 5; background: #100e0c; display: flex; flex-direction: column; pointer-events: auto; }
+.village header, .tt-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; }
+.village h2, .tabletop h3 { font-family: Cinzel, Palatino, serif; margin: 0; }
+.village canvas, .tt-field { flex: 1; width: 100%; min-height: 0; }
+.village-actions, .tt-strats, .tt-bottom, .tt-roster { display: flex; gap: 6px; overflow: auto; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
+.tt-top, .tt-card, .tt-phases, .tt-strats button, .tt-bottom { background: linear-gradient(#1b1713, #120f0c); border: 1px solid #8a7040; color: var(--ink); }
+.tt-mid { text-align: center; }
+.tt-mid strong { display: block; font-family: Cinzel, Palatino, serif; color: var(--gold); }
+.tt-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr; position: relative; }
+.tt-card, .tt-phases, .tt-obj { font-size: 12px; padding: 8px; }
+.tt-phases { list-style: none; margin: 0; padding: 8px; display: flex; gap: 6px; overflow: auto; }
+.tt-phases li { padding: 4px 8px; border: 1px solid #6d5834; border-radius: 999px; }
+.tt-phases li.on { background: #3a2a18; color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+.tt-card ul { margin: 4px 0; padding-left: 16px; }
+.tt-strats button { text-align: left; border-radius: 10px; padding: 6px; min-width: 140px; }
+.tt-strats button small, .tt-roster small { display: block; color: var(--muted-ink); }
+.tt-roster button { width: 72px; border: 1px solid #6d5834; background: #16110e; color: inherit; border-radius: 10px; }
+.tt-roster button.on { box-shadow: 0 0 0 2px var(--gold); }
+.tt-roster img, .tt-roster i { width: 100%; height: 48px; object-fit: cover; display: block; background: #2a2118; border-radius: 8px; }
+.tt-score { display: flex; gap: 8px; align-items: center; }
+.tt-dice { display: flex; gap: 8px; align-items: center; padding: 0 12px; min-height: 36px; }
+.die { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--gold); background: #1a120c; font-family: Cinzel, serif; }
+.die.spin { animation: gallop 0.2s linear infinite; }
+.tt-banner { margin: 0 12px 8px; color: var(--gold); }
+.tt-banner.loss { color: #e07060; }
+.tt-obj { position: absolute; left: 8px; top: 8px; z-index: 2; max-width: 46%; background: rgba(12,10,8,.82); border: 1px solid #8a7040; border-radius: 8px; }
+.tabletop.auto .tt-dice p { font-size: 18px; }
+@media (orientation: landscape), (min-width: 840px) {
+  .tt-body { grid-template-columns: 168px 1fr 132px; }
+  .tt-phases { flex-direction: column; }
+  .tt-card { overflow: auto; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .voice.hot { animation: none; }
+  .voice.hot, .mount-token.trot .bob, .mount-token.gallop .bob, .die.spin { animation: none; }
 }

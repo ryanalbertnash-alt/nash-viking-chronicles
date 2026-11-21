@@ -7,6 +7,34 @@ export type ItemKind = "skin" | "weapon" | "longship" | "potion"
 export type Rarity = "common" | "uncommon" | "rare" | "legendary"
 export type Stance = "smash" | "guard" | "volley" | "heal"
 export type BuildingId = "hall" | "forge" | "walls" | "dock" | "yard" | "shrine"
+export type MarchKind = "warband" | "longship" | "raven"
+export type MarchOrder = "claim" | "attack" | "recruit" | "scout" | "raid" | "siege"
+
+export type March = {
+  id: string
+  kind: MarchKind
+  order: MarchOrder
+  targetTownId: string | null
+  targetPlayerId: string | null
+  label: string
+  fromLat: number
+  fromLng: number
+  toLat: number
+  toLng: number
+  startedAt: number
+  arriveAt: number
+  stance: Stance
+}
+
+export type DailyQuest = {
+  id: string
+  kind: "build" | "train" | "march"
+  title: string
+  goal: number
+  progress: number
+  reward: number
+  claimed: boolean
+}
 
 export type ChampionDef = {
   id: string
@@ -133,6 +161,20 @@ export type Player = {
   lastBattleAt: number
   ai: null | { attack: number; defense: number; hp: number }
   createdAt: number
+  homePlaceId: string | null
+  movedAt: number
+  marches: March[]
+  questDay: string
+  quests: DailyQuest[]
+  idleAt: number
+  inviteCode: string
+  friends: string[]
+  rivals: string[]
+  roadMeters: number
+  roadNext: number
+  roadDriving: boolean
+  roadQuest: number
+  notices: { text: string; tone: "good" | "bad" | "info" }[]
 }
 
 export type TownState = { id: string; ownerId: string | null }
@@ -236,6 +278,8 @@ export type PublicPlayer = {
   skinId: string | null
   leaderArt: string | null
   townCount: number
+  homePlaceId: string | null
+  homePlaceName: string | null
 }
 
 export type PublicShip = {
@@ -268,6 +312,22 @@ export type PublicWorld = {
   reports: RoadReport[]
   board: Board
   season: string
+  marches: PublicMarch[]
+}
+
+export type PublicMarch = {
+  id: string
+  ownerId: string
+  ownerName: string
+  faction: Faction
+  kind: MarchKind
+  fromLat: number
+  fromLng: number
+  toLat: number
+  toLng: number
+  startedAt: number
+  arriveAt: number
+  label: string
 }
 
 export type PrivateChampion = OwnedChampion & {
@@ -322,6 +382,16 @@ export type PrivateYou = {
   premTier: number
   nextTierXp: number | null
   townIds: string[]
+  homePlaceId: string | null
+  homePlaceName: string | null
+  movedAt: number
+  marches: { id: string; kind: MarchKind; label: string; arriveAt: number; startedAt: number; toLat: number; toLng: number }[]
+  quests: DailyQuest[]
+  idleGold: number
+  inviteCode: string
+  friendIds: string[]
+  rivalIds: string[]
+  friends: { id: string; name: string; faction: Faction | null; online: boolean; wins: number; raids: number; gold: number; townCount: number; villageName: string }[]
 }
 
 export type GameEvent = {

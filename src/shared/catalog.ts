@@ -1,6 +1,6 @@
 import type { BuildingId, ChampionDef, ItemDef, RivalDef, TownDef, TownKind } from "./types.ts"
 
-export const WORLD_VERSION = 2
+export const WORLD_VERSION = 3
 export const CLAIM_RADIUS = 1000
 export const ATTACK_RADIUS = 1300
 export const LOCK_KMH = 10

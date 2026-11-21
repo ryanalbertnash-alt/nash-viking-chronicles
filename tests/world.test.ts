@@ -1,4 +1,5 @@
 import { champions, items, towns } from "../src/shared/catalog.ts"
+import { nearestPlace, searchPlacesLocal } from "../server/places.ts"
 import { counter } from "../src/shared/army.ts"
 import { usualLimit } from "../src/shared/limits.ts"
 import { reportSpeech } from "../src/shared/reports.ts"
@@ -128,7 +129,7 @@ export async function runWorld() {
   assert(board.clans.viking + board.clans.grog > 0, "clan score")
   assert(board.warriors.length > 0, "warriors")
   const world = game.publicWorld()
-  assert(world.towns.length === towns.length, "public towns")
+  assert(world.towns.length >= towns.length, "public towns")
   assert(world.ships.length >= 4, "ships include the player's")
   assert(world.players.some((p) => p.name === "Jarl Harald"), "ai rivals")
   const scoutGold = game.privateYou(a.playerId!)!.gold
@@ -142,6 +143,69 @@ export async function runWorld() {
   assert(againMark.error, "duplicate report")
   const distant = game.confirmReport(b.playerId!, game.publicWorld().reports[0]!.id, true)
   assert(distant.error, "too far to confirm")
+
+  const berwick = game.march(a.playerId!, { kind: "warband", townId: "berwick" })
+  assert(!berwick.error, berwick.error ?? "march")
+  assert(game.privateYou(a.playerId!)!.marches.length === 1, "one march")
+  const builtQuest = game.privateYou(a.playerId!)!.quests.find((q) => q.kind === "build")
+  assert(builtQuest && (builtQuest.claimed || builtQuest.progress >= 1), "build quest")
+  let arrived = false
+  for (let i = 0; i < 8; i++) {
+    const ev = game.tick(Date.now() + (i + 1) * 60000)
+    if (ev.some((e) => e.event.text.toLowerCase().includes("berwick"))) arrived = true
+  }
+  assert(arrived, "war band reached Berwick")
+  assert(!game.privateYou(a.playerId!)!.marches.length, "march cleared")
+
+  const dunbar = towns.find((t) => t.id === "dunbar")!
+  game.setPos(a.playerId!, { lat: dunbar.lat, lng: dunbar.lng, heading: 0, speed: 0 })
+  const stood = game.claim(a.playerId!, "dunbar")
+  assert(stood.result?.summary.includes("Double gold"), stood.result?.summary ?? stood.error ?? "presence")
+
+  const idle = game.collectIdle(a.playerId!, Date.now() + 5 * 60_000)
+  assert(idle.event?.text.includes("hearth"), idle.error ?? "idle")
+  const moved = game.moveHome(a.playerId!, "crysler")
+  assert(moved.error?.includes("month"), moved.error ?? "move cooldown")
+
+  const code = game.privateYou(a.playerId!)!.inviteCode
+  const beforeHost = game.privateYou(a.playerId!)!.gold
+  const beforeGuest = game.privateYou(b.playerId!)!.gold
+  const link = game.befriend(b.playerId!, code)
+  assert(!link.error, link.error ?? "befriend")
+  assert(game.privateYou(a.playerId!)!.gold === beforeHost + 60, "host welcome")
+  assert(game.privateYou(b.playerId!)!.gold === beforeGuest + 60, "guest welcome")
+  assert(game.privateYou(a.playerId!)!.friendIds.includes(b.playerId!), "friends")
+  const againFriend = game.befriend(b.playerId!, code)
+  assert(againFriend.event && game.privateYou(a.playerId!)!.gold === beforeHost + 60, "welcome once")
+
+  const chest = nearestPlace(45.10243, -75.22892, 20000)
+  assert(chest?.name === "Chesterville", chest?.name ?? "chesterville")
+  const vancouver = nearestPlace(49.24966, -123.11934, 30000)
+  assert(vancouver?.name === "Vancouver", vancouver?.name ?? "vancouver")
+  const dallas = nearestPlace(32.78306, -96.80667, 30000)
+  assert(dallas?.name === "Dallas" && dallas.country === "US", dallas?.name ?? "dallas")
+  const lubec = searchPlacesLocal("Lubec", 3).find((p) => p.country === "US")
+  assert(lubec && Math.abs(lubec.lat - 44.86) < 0.2, lubec?.name ?? "lubec")
+  const founded = createGame(undefined, () => 0.5)
+  const traveler = founded.join({ name: "Ada Nash" })
+  const dallasHall = founded.choose(traveler.playerId!, { faction: "viking", placeId: dallas!.id })
+  assert(!dallasHall.error, dallasHall.error ?? "dallas hall")
+  assert(founded.privateYou(traveler.playerId!)!.homePlaceName === "Dallas", "home is Dallas")
+
+  const road = createGame(undefined, () => 0.1)
+  const rider = road.join({ name: "Bram" })
+  road.choose(rider.playerId!, { faction: "viking", startTownId: "chesterville" })
+  const home = road.privateYou(rider.playerId!)!
+  const steps = road.setPos(rider.playerId!, { lat: home.lat + 0.03, lng: home.lng, heading: 10, speed: 80 })
+  assert(steps.some((e) => e.text.includes("Adventure")), "adventure starts")
+  let told = false
+  let lat = home.lat
+  for (let i = 0; i < 12; i++) {
+    lat += 0.01
+    const ev = road.setPos(rider.playerId!, { lat, lng: home.lng, heading: 10, speed: 80 })
+    if (ev.some((e) => /ambush|beast|treasure|war band|mead|home/i.test(e.text))) told = true
+  }
+  assert(told, "road encounter")
 
   console.log("world tests passed")
 }

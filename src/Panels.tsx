@@ -23,13 +23,14 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   )
 }
 
-export function TownPanel({ town, you, world, send, onClose, onStance }: {
+export function TownPanel({ town, you, world, send, onClose, onStance, near }: {
   town: PublicTown
   you: PrivateYou
   world: PublicWorld
   send: Send
   onClose: () => void
   onStance: (stance: Stance) => void
+  near?: boolean
 }) {
   const dist = haversine(you, town)
   const mine = town.ownerId === you.id
@@ -46,13 +47,18 @@ export function TownPanel({ town, you, world, send, onClose, onStance }: {
         </div>
       </div>
       <div className="row">
-        {!held && !mine && <Button onClick={() => onStance("smash")}>Claim</Button>}
-        {held && <Button variant="destructive" onClick={() => onStance("smash")}>{(world.players.find((p) => p.id === town.ownerId)?.walls ?? 0) >= 2 ? "Besiege the fort" : "Attack the town"}</Button>}
+        {near && !held && !mine && <Button onClick={() => onStance("smash")}>Claim in person</Button>}
+        {near && held && <Button variant="destructive" onClick={() => onStance("smash")}>{(world.players.find((p) => p.id === town.ownerId)?.walls ?? 0) >= 2 ? "Besiege the fort" : "Attack in person"}</Button>}
+        {!near && !mine && <Button onClick={() => send({ t: "do", action: "march", kind: "warband", townId: town.id })}>Send the war band</Button>}
+        {!near && <Button variant="outline" onClick={() => send({ t: "do", action: "march", kind: "raven", townId: town.id })}>Send a raven</Button>}
+        {!near && town.shore && you.dock >= 1 && !mine && <Button variant="secondary" onClick={() => send({ t: "do", action: "march", kind: "longship", townId: town.id })}>Launch the longship</Button>}
+        {!near && !town.shore && you.dock >= 1 && !mine && <Button variant="secondary" onClick={() => send({ t: "do", action: "march", kind: "longship", townId: town.id })}>Send the longship</Button>}
         {mine && <Button onClick={() => send({ t: "do", action: "tribute", townId: town.id })}>Take tribute</Button>}
-        {same && <Button variant="secondary" onClick={() => send({ t: "do", action: "recruit", townId: town.id })}>Recruit {town.guardianName?.split(" ")[0]}</Button>}
-        {mine && <Button variant="outline" onClick={() => send({ t: "do", action: "rest" })}>Rest</Button>}
+        {same && near && <Button variant="secondary" onClick={() => send({ t: "do", action: "recruit", townId: town.id })}>Recruit {town.guardianName?.split(" ")[0]}</Button>}
+        {same && !near && <Button variant="secondary" onClick={() => send({ t: "do", action: "march", kind: "warband", townId: town.id })}>Send for {town.guardianName?.split(" ")[0]}</Button>}
+        {mine && near && <Button variant="outline" onClick={() => send({ t: "do", action: "rest" })}>Rest</Button>}
       </div>
-      <p className="fine">Worth about {TOWN_POWER[town.kind].wealth} gold. Drive here to recruit, take the town, or besiege it. Say “claim town”, “attack”, or “recruit”.</p>
+      <p className="fine">{near ? "You are here. The sack is double, and the town falls now." : `Worth about ${TOWN_POWER[town.kind].wealth} gold. A march takes time. Driving here pays double.`} Say “claim town”, “attack”, or “recruit”.</p>
       {held && <p className="fine">{town.ownerName}'s army: {world.players.find((p) => p.id === town.ownerId)?.army ?? "a levy"}.</p>}
       <p className="fine">{world.saga[0]?.text}</p>
     </Sheet>
@@ -75,8 +81,12 @@ export function HallPanel({ person, you, world, send, onClose, onAttack, onLeave
         <p style={{ margin: 0 }}>{person.name} {person.isAI ? "keeps a rival hall" : person.online ? "is on the road" : "is away"}.</p>
         <p className="muted">{person.townCount} towns · {person.wins} wins · {person.raids} raids · {formatMeters(dist)}</p>
         <p className="muted">Hall {person.hall} · Forge {person.forge} · Walls {person.walls} · Dock {person.dock}</p>
-        {!person.isAI && <Button variant="destructive" onClick={onAttack}>Attack the hall</Button>}
-        {person.isAI && <Button variant="destructive" onClick={onAttack}>Attack {person.name}</Button>}
+        <Button variant="destructive" onClick={onAttack}>{dist < 1300 ? `Besiege ${person.name}` : "Send a siege"}</Button>
+        {you.dock >= 1 && <Button variant="outline" onClick={() => {
+          const shore = world.towns.find((t) => t.ownerId === person.id && t.shore) ?? world.towns.find((t) => t.ownerId === person.id)
+          if (shore) send({ t: "do", action: "march", kind: "longship", townId: shore.id })
+          else send({ t: "do", action: "march", kind: "warband", playerId: person.id })
+        }}>Raid</Button>}
       </Sheet>
     )
   }
@@ -87,7 +97,14 @@ export function HallPanel({ person, you, world, send, onClose, onAttack, onLeave
   }
   return (
     <Sheet title={you.villageName} onClose={onClose}>
-      <p className="muted" style={{ margin: 0 }}>About {income} gold every half minute. Warband cap {you.warbandCap}. Recovery word: <b className="gold">{you.recovery}</b></p>
+      <p className="muted" style={{ margin: 0 }}>About {income} gold every half minute, plus hearth gold you can take. Warband cap {you.warbandCap}. Recovery word: <b className="gold">{you.recovery}</b></p>
+      <div className="row">
+        <Button size="sm" onClick={() => send({ t: "do", action: "idle" })}>Take hearth gold · {you.idleGold}</Button>
+        <Button size="sm" variant="outline" onClick={() => { void shareInvite(you.inviteCode, you.name) }}>Invite friends</Button>
+      </div>
+      <p className="fine">Invite link: {location.origin}/join/{you.inviteCode}. The hall can move once a month.</p>
+      {you.quests.map((q) => <p key={q.id} className="fine">{q.claimed ? "Done" : `${q.progress}/${q.goal}`} · {q.title} · {q.reward} gold</p>)}
+      <MoveHall send={send} />
       {onLeave && <Button variant="ghost" onClick={onLeave}>Leave this name</Button>}
       {(Object.keys(BUILDINGS) as BuildingId[]).map((part) => {
         const def = BUILDINGS[part]
@@ -254,9 +271,10 @@ export function ShopPanel({ you, send, onClose }: { you: PrivateYou; send: Send;
   )
 }
 
-export function SagaPanel({ world, onClose }: { world: PublicWorld; onClose: () => void }) {
+export function SagaPanel({ world, you, send, onClose }: { world: PublicWorld; you: PrivateYou; send: Send; onClose: () => void }) {
   const total = world.board.clans.viking + world.board.clans.grog || 1
-  const [tab, setTab] = useState<"war" | "towns" | "gold" | "raids" | "scouts" | "live" | "log">("live")
+  const [tab, setTab] = useState<"war" | "towns" | "gold" | "raids" | "scouts" | "live" | "friends" | "log">("live")
+  const friends = [...you.friends].sort((a, b) => b.wins - a.wins || b.townCount - a.townCount)
   return (
     <Sheet title="The saga" onClose={onClose}>
       <div className="clan-bar">
@@ -272,6 +290,7 @@ export function SagaPanel({ world, onClose }: { world: PublicWorld; onClose: () 
         <Button size="sm" variant={tab === "raids" ? "default" : "outline"} onClick={() => setTab("raids")}>Raids</Button>
         <Button size="sm" variant={tab === "live" ? "default" : "outline"} onClick={() => setTab("live")}>Players</Button>
         <Button size="sm" variant={tab === "scouts" ? "default" : "outline"} onClick={() => setTab("scouts")}>Seers</Button>
+        <Button size="sm" variant={tab === "friends" ? "default" : "outline"} onClick={() => setTab("friends")}>Friends</Button>
         <Button size="sm" variant={tab === "log" ? "default" : "outline"} onClick={() => setTab("log")}>Log</Button>
       </div>
       {tab === "war" && world.board.warriors.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.wins} wins · {r.faction}</p>)}
@@ -280,6 +299,16 @@ export function SagaPanel({ world, onClose }: { world: PublicWorld; onClose: () 
       {tab === "raids" && world.board.raids.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.raids} raids</p>)}
       {tab === "scouts" && world.board.scouts.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.scouts} warnings on the real road · {r.faction}</p>)}
       {tab === "live" && (world.board.live.length ? world.board.live.map((r) => <p key={r.name} style={{ margin: 0 }}>{r.name} · {r.towns} towns · {r.wins} wins · {r.faction === "grog" ? "Grogs" : "Nash"}</p>) : <p className="fine">No living players on the road yet.</p>)}
+      {tab === "friends" && (friends.length ? friends.map((f) => (
+        <article key={f.id} className="card">
+          <h3>{f.name}</h3>
+          <p className="muted" style={{ margin: 0 }}>{f.villageName} · {f.wins} wins · {f.townCount} towns · {f.online ? "on the road" : "away"}</p>
+          <div className="row">
+            <Button size="sm" variant="destructive" onClick={() => send({ t: "do", action: "march", kind: "warband", playerId: f.id })}>Siege</Button>
+            <Button size="sm" variant="outline" onClick={() => send({ t: "do", action: "march", kind: "longship", playerId: f.id })}>Raid</Button>
+          </div>
+        </article>
+      )) : <p className="fine">No friends at the hearth yet. Invite one from your hall.</p>)}
       {tab === "log" && world.saga.map((s) => <p key={s.id} className="fine">{s.text}</p>)}
     </Sheet>
   )
@@ -390,6 +419,37 @@ export function BattleView({ battle, onClose }: { battle: BattleResult; onClose:
       {done && <p className="fine">{battle.summary}</p>}
     </section>
   )
+}
+
+function MoveHall({ send }: { send: Send }) {
+  const [q, setQ] = useState("")
+  const [hits, setHits] = useState<{ id?: string; name: string }[]>([])
+  return (
+    <form className="stack" onSubmit={(e) => { e.preventDefault(); void fetch(`/api/geocode?q=${encodeURIComponent(q)}`).then((r) => r.json()).then((rows) => setHits(rows as { id?: string; name: string }[])) }}>
+      <p className="fine">Move the hall once a month.</p>
+      <input className="name-field" value={q} onChange={(e) => setQ(e.target.value)} placeholder="A new town" />
+      <Button type="submit" size="sm" variant="outline">Search</Button>
+      {hits.map((hit) => hit.id ? <Button key={hit.id} size="sm" variant="ghost" onClick={() => send({ t: "do", action: "moveHome", placeId: hit.id })}>{hit.name}</Button> : null)}
+    </form>
+  )
+}
+
+async function shareInvite(code: string, name: string) {
+  const url = `${location.origin}/join/${code}`
+  const text = `${name} calls you to the longhouse.`
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Nash's Viking Chronicles", text, url })
+      return
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url)
+  } catch {
+    window.prompt("Copy this invite link", url)
+  }
 }
 
 function battleScene(faction: string, side: "left" | "right") {

@@ -10,6 +10,7 @@ import type { UnitClass } from "../src/shared/army.ts"
 import type { BuildingId, Faction, ServerMsg, Stance } from "../src/shared/types.ts"
 import { createGame, freshState, normalize } from "./world.ts"
 import { buildRoute, roadAt, searchPlaces } from "./route.ts"
+import { nearestPlace, placesInBbox, placeById } from "./places.ts"
 import { REPORT_TYPES, type ReportType } from "../src/shared/reports.ts"
 
 type Client = { ws: WebSocket; playerId: string | null }
@@ -102,6 +103,57 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
     }
   })
 
+  app.get("/api/places", (req, res) => {
+    const south = Number(req.query.south)
+    const west = Number(req.query.west)
+    const north = Number(req.query.north)
+    const east = Number(req.query.east)
+    if (![south, west, north, east].every(Number.isFinite)) {
+      res.status(400).json({ error: "Need a map box." })
+      return
+    }
+    const span = Math.max(north - south, east - west)
+    if (span > 30) {
+      res.json([])
+      return
+    }
+    const rows = placesInBbox(south, west, north, east, 80)
+    const world = game.publicWorld()
+    const owned = new Map(world.towns.map((t) => [t.id, t]))
+    res.json(rows.map((p) => owned.get(p.id) ?? {
+      id: p.id,
+      name: p.name,
+      lat: p.lat,
+      lng: p.lng,
+      kind: p.kind,
+      blurb: `${p.name}, ${p.country === "CA" ? "Canada" : "the United States"}.`,
+      shore: false,
+      ownerId: null,
+      ownerName: null,
+      ownerFaction: null,
+      guardianId: null,
+      guardianName: null,
+      guardianFaction: null,
+      guardianArt: null,
+      guardianFree: false,
+    }))
+  })
+
+  app.get("/api/nearest", (req, res) => {
+    const lat = Number(req.query.lat)
+    const lng = Number(req.query.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      res.status(400).json({ error: "Need a point." })
+      return
+    }
+    const place = nearestPlace(lat, lng, 50000)
+    if (!place) {
+      res.json(null)
+      return
+    }
+    res.json(placeById(place.id) ?? place)
+  })
+
   app.get("/api/health", (_req, res) => {
     const world = game.publicWorld()
     res.json({ ok: true, name: "Nash's Viking Chronicles", players: world.players.length, towns: world.towns.length })
@@ -186,6 +238,9 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
           return
         }
         client.playerId = joined.playerId ?? null
+        if (client.playerId && typeof msg.invite === "string" && msg.invite) {
+          game.befriend(client.playerId, msg.invite)
+        }
         saveSoon()
         send(ws, {
           t: "hello",
@@ -205,20 +260,32 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
         const result = game.choose(id, {
           faction: msg.faction as Faction,
           startTownId: typeof msg.startTownId === "string" ? msg.startTownId : undefined,
+          placeId: typeof msg.placeId === "string" ? msg.placeId : undefined,
           lat: typeof msg.lat === "number" ? msg.lat : undefined,
           lng: typeof msg.lng === "number" ? msg.lng : undefined,
         })
         reply(ws, result)
+        if (!result.error && typeof msg.invite === "string" && msg.invite) {
+          reply(ws, game.befriend(id, msg.invite))
+        }
         return
       }
       if (t === "pos") {
-        game.setPos(id, {
+        const events = game.setPos(id, {
           lat: Number(msg.lat),
           lng: Number(msg.lng),
           heading: Number(msg.heading) || 0,
           speed: Number(msg.speed) || 0,
         })
         posDirty = true
+        if (events.length) {
+          saveSoon()
+          const world = game.publicWorld()
+          for (const event of events) {
+            send(ws, { t: "event", you: game.privateYou(id), world, event })
+          }
+          broadcastState()
+        }
         return
       }
       if (t === "do") {
@@ -250,6 +317,14 @@ export async function start(opts: { port?: number; vite?: boolean; dataFile?: st
     if (action === "tribute") return game.tribute(id, String(msg.townId ?? ""))
     if (action === "report" && REPORT_TYPES.includes(String(msg.kind) as ReportType)) return game.fileReport(id, String(msg.kind) as ReportType)
     if (action === "confirm") return game.confirmReport(id, String(msg.reportId ?? ""), Boolean(msg.still))
+    if (action === "march") return game.march(id, {
+      kind: msg.kind === "longship" || msg.kind === "raven" || msg.kind === "warband" ? msg.kind : "warband",
+      townId: typeof msg.townId === "string" ? msg.townId : undefined,
+      playerId: typeof msg.playerId === "string" ? msg.playerId : undefined,
+    })
+    if (action === "idle") return game.collectIdle(id)
+    if (action === "befriend") return game.befriend(id, String(msg.code ?? ""))
+    if (action === "moveHome") return game.moveHome(id, String(msg.placeId ?? ""))
     return { error: "Unknown order." }
   }
 
