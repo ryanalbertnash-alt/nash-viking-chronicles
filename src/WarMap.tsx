@@ -90,7 +90,10 @@ export function WarMap({
       setBooted(true)
       loadPlaces(map)
     })
-    map.on("zoom", () => host.current?.classList.toggle("map-far", map.getZoom() < 11))
+    map.on("zoom", () => {
+      host.current?.classList.toggle("map-far", map.getZoom() < 11)
+      host.current?.classList.toggle("map-close", map.getZoom() > 14.5)
+    })
     map.on("moveend", () => loadPlaces(map))
     map.on("dragstart", () => { if (!cb.current.locked) cb.current.onFree() })
     map.on("move", () => spin(map))
@@ -165,7 +168,7 @@ export function WarMap({
     }
     for (const report of world.reports) {
       const info = REPORT_INFO[report.type]
-      const node = nodeOf(`<div class="pin report ${report.type}" data-sig="${report.type}:${report.still.length}:${report.gone.length}"><div class="label"><b>${escapeHtml(info.title)}</b><small>${escapeHtml(info.label)}</small></div><img class="mark" alt="" src="${asset(info.icon)}" /></div>`)
+      const node = nodeOf(`<div class="pin report ${report.type}" title="${escapeHtml(info.title)}. ${escapeHtml(info.label)}" data-sig="${report.type}:${report.still.length}:${report.gone.length}"><img class="mark" alt="${escapeHtml(info.title)}, ${escapeHtml(info.label)}" src="${asset(info.icon)}" /><div class="label">${escapeHtml(info.label)}</div></div>`)
       node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onReport(report.id) })
       put(`report:${report.id}`, report.lng, report.lat, node, "bottom")
     }
@@ -229,7 +232,7 @@ export function WarMap({
     spin(map)
   }, [world, places, you.id, you.friendIds, you.faction, booted, pos.lat, pos.lng, pos.heading, speed])
 
-  return <div className="map-wrap"><div ref={host} className="map" /></div>
+  return <div className={`map-wrap ${moving ? "map-drive" : ""}`}><div ref={host} className="map" /></div>
 }
 
 function spin(map: maplibregl.Map) {

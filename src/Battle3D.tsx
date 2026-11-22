@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import * as THREE from "three"
+import { asset } from "@/art"
 import { playSfx } from "@/audio"
 import { Button } from "@/components/ui/button"
 import { championClass } from "@/shared/army.ts"
@@ -60,6 +61,7 @@ type Unit = {
   metal: number
   cloth: number
   fur: number
+  flash: number
 }
 
 type Part = {
@@ -127,12 +129,12 @@ export function Battle3D({
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.shadowMap.enabled = !low
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
-    renderer.setClearColor(0x8eafd0)
+    renderer.setClearColor(0x1a120e)
     el.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    scene.fog = new THREE.Fog(0xc5d4b8, 14, 32)
-    scene.background = new THREE.Color(0x8eafd0)
+    scene.fog = new THREE.Fog(0x2a1812, 9, 26)
+    scene.background = new THREE.Color(0x1c1410)
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 80)
     const camBase = new THREE.Vector3(0, 7.2, 11)
     const fit = () => {
@@ -144,8 +146,8 @@ export function Battle3D({
     }
     fit()
 
-    scene.add(new THREE.HemisphereLight(0xfff2d2, 0x6a8a48, 1.15))
-    const sun = new THREE.DirectionalLight(0xffe2b0, 1.55)
+    scene.add(new THREE.HemisphereLight(0xffb070, 0x2a1a12, 0.55))
+    const sun = new THREE.DirectionalLight(0xffc48a, 1.35)
     sun.position.set(-8, 14, 6)
     if (!low) {
       sun.castShadow = true
@@ -158,9 +160,11 @@ export function Battle3D({
       sun.shadow.camera.bottom = -12
     }
     scene.add(sun)
-    const torch = new THREE.PointLight(0xff8830, 8, 14)
-    torch.position.set(0, 1.6, -1)
-    scene.add(torch)
+    const torch = new THREE.PointLight(0xff5a18, 18, 16)
+    torch.position.set(-1.2, 1.4, -2.2)
+    const torch2 = new THREE.PointLight(0xff3a10, 12, 12)
+    torch2.position.set(2.4, 1.1, 1.6)
+    scene.add(torch, torch2)
 
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(18, low ? 24 : 48),
@@ -169,13 +173,23 @@ export function Battle3D({
     ground.rotation.x = -Math.PI / 2
     ground.receiveShadow = !low
     scene.add(ground)
-    dressField(scene, low)
+    dressField(scene, low, battle.defenderFaction === "grog")
 
     const units = buildRoster(battle, cap)
     const boneWorld = units.map(() => Array.from({ length: BONES }, () => new THREE.Matrix4()))
     const parts = makeParts(units.length)
     for (const part of parts) scene.add(part.mesh)
     paintColors(parts, units)
+    const portraits = units.map((u) => {
+      if (!u.hero || !u.art) return null
+      const tex = new THREE.TextureLoader().load(asset(u.art))
+      tex.colorSpace = THREE.SRGBColorSpace
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }))
+      sprite.scale.set(0.62, 0.78, 1)
+      scene.add(sprite)
+      return sprite
+    })
+    const headPart = parts[4]
 
     const arrows = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.02, 0.02, 0.85, 4), new THREE.MeshBasicMaterial({ color: 0xf4e2b0 }), 48)
     arrows.frustumCulled = false
@@ -264,6 +278,7 @@ export function Battle3D({
       u.hp -= dmg
       u.state = u.hp <= 0 ? "dead" : "hit"
       u.stateT = 0
+      u.flash = 0.28
       const dir = from.side === "atk" ? 1 : -1
       u.x += dir * 0.28
       shake = Math.min(0.45, shake + (u.hero ? 0.22 : 0.1))
@@ -376,8 +391,27 @@ export function Battle3D({
         } else u.stateT += dt
       }
 
-      for (let i = 0; i < units.length; i++) pose(units[i], clock.elapsedTime)
-      for (let i = 0; i < units.length; i++) writeBones(units[i], boneWorld[i])
+      let flashed = false
+      for (let i = 0; i < units.length; i++) {
+        const u = units[i]
+        if (u.flash > 0) {
+          u.flash = Math.max(0, u.flash - dt)
+          _c.setHex(u.flash > 0 ? 0x9a1814 : u.skin)
+          headPart.mesh.setColorAt(i, _c)
+          flashed = true
+        }
+        pose(u, clock.elapsedTime)
+        writeBones(u, boneWorld[i])
+        const face = portraits[i]
+        if (!face) continue
+        boneWorld[i][4].decompose(_v, _q, _s)
+        face.position.copy(_v)
+        face.position.y += 0.22 * u.scale
+        const sc = u.scale
+        face.scale.set(0.62 * sc, 0.78 * sc, 1)
+        face.visible = u.alive || u.stateT < 0.45
+      }
+      if (flashed && headPart.mesh.instanceColor) headPart.mesh.instanceColor.needsUpdate = true
       for (const part of parts) {
         for (let i = 0; i < units.length; i++) writePart(part, units[i], i, boneWorld[i])
         part.mesh.instanceMatrix.needsUpdate = true
@@ -434,8 +468,8 @@ export function Battle3D({
       const aspect = camera.aspect
       const gap = lineGap(units)
       const zoom = THREE.MathUtils.clamp(gap / 5.5, 0.62, 1)
-      const baseZ = aspect < 0.85 ? 10.2 : 12
-      const baseY = aspect < 0.85 ? 7.2 : 6
+      const baseZ = aspect < 0.85 ? 8.6 : 10.4
+      const baseY = aspect < 0.85 ? 5.2 : 4.6
       camBase.set((an ? ax / an : 0) * 0.25, baseY * (0.75 + 0.25 * zoom), baseZ * zoom)
       camera.position.lerp(camBase, 0.08)
       camera.position.x += (Math.random() - 0.5) * shake
@@ -602,6 +636,8 @@ function makeParts(count: number): Part[] {
     head: new THREE.SphereGeometry(0.16, 10, 8),
     hair: new THREE.SphereGeometry(0.17, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2),
     beard: new THREE.ConeGeometry(0.09, 0.22, 6),
+    braid: new THREE.CylinderGeometry(0.025, 0.035, 0.28, 5),
+    paint: new THREE.BoxGeometry(0.045, 0.12, 0.02),
     helm: new THREE.SphereGeometry(0.17, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2.2),
     horn: new THREE.ConeGeometry(0.045, 0.28, 5),
     cloak: new THREE.BoxGeometry(0.46, 0.55, 0.08),
@@ -635,6 +671,10 @@ function makeParts(count: number): Part[] {
     P(inst(geo.head, skin), 4, 0, 0, 0, 1, 1, 1, (u) => u.skin, () => true),
     P(inst(geo.hair, fur), 4, 0, 0.06, 0.02, 1, 0.7, 1, (u) => u.hair, () => true),
     P(inst(geo.beard, fur), 4, 0, -0.1, -0.08, 1, 1, 0.7, (u) => u.hair, (u) => u.beard),
+    P(inst(geo.braid, fur), 4, -0.1, -0.08, -0.02, 1, 1, 1, (u) => u.hair, (u) => u.faction === "viking"),
+    P(inst(geo.braid, fur), 4, 0.1, -0.08, -0.02, 1, 1, 1, (u) => u.hair, (u) => u.faction === "viking"),
+    P(inst(geo.paint, skin), 4, -0.05, 0.02, -0.15, 1, 1, 1, () => 0x14161c, (u) => u.faction === "viking"),
+    P(inst(geo.paint, skin), 4, 0.05, 0.02, -0.15, 1, 1, 1, () => 0x14161c, (u) => u.faction === "viking"),
     P(inst(geo.helm, metal), 4, 0, 0.05, 0, 1, 0.85, 1, (u) => u.metal, () => true),
     P(inst(geo.horn, metal), 4, -0.1, 0.16, 0, 1, 1, 1, (u) => u.metal, (u) => u.horns),
     P(inst(geo.horn, metal), 4, 0.1, 0.16, 0, 1, 1, 1, (u) => u.metal, (u) => u.horns),
@@ -659,10 +699,10 @@ function makeParts(count: number): Part[] {
     P(inst(geo.mount, leather), 0, 0, 0.45, 0.15, 1.3, 0.85, 0.9, (u) => u.mount === "boar" ? u.skin : u.leather, (u) => u.mount !== "none"),
   ]
   parts[6].rx = Math.PI
-  parts[8].rz = 0.55
-  parts[9].rz = -0.55
-  parts[17].rx = Math.PI / 2
-  parts[28].rx = Math.PI / 2
+  parts[12].rz = 0.55
+  parts[13].rz = -0.55
+  parts[21].rx = Math.PI / 2
+  parts[32].rx = Math.PI / 2
   return parts
 }
 
@@ -725,6 +765,7 @@ function expand(battle: BattleResult, side: "atk" | "def", faction: Faction, cap
       metal: look.metal,
       cloth: look.cloth,
       fur: look.fur,
+      flash: 0,
     })
   }
   champs.slice(0, 4).forEach((c, i) => {
@@ -789,29 +830,33 @@ function fieldTexture() {
   canvas.height = 512
   const g = canvas.getContext("2d")
   if (!g) return new THREE.CanvasTexture(canvas)
-  g.fillStyle = "#67a34a"
+  g.fillStyle = "#3d4a32"
   g.fillRect(0, 0, 512, 512)
-  for (let i = 0; i < 5000; i++) {
-    g.fillStyle = i % 2 ? "#5b9440" : "#86b85a"
-    g.fillRect(Math.random() * 512, Math.random() * 512, 2, 3)
+  for (let i = 0; i < 7000; i++) {
+    g.fillStyle = i % 3 === 0 ? "#2a2418" : i % 3 === 1 ? "#4a3828" : "#5a4632"
+    g.fillRect(Math.random() * 512, Math.random() * 512, 3, 2)
   }
-  g.fillStyle = "#8d6b42"
+  g.fillStyle = "#2c2418"
   g.beginPath()
-  g.ellipse(256, 270, 150, 110, 0, 0, Math.PI * 2)
+  g.ellipse(256, 270, 160, 120, 0, 0, Math.PI * 2)
   g.fill()
-  g.fillStyle = "#6e5234"
+  g.fillStyle = "#6a3018"
+  g.globalAlpha = 0.35
   g.beginPath()
-  g.ellipse(256, 290, 60, 36, 0, 0, Math.PI * 2)
+  g.ellipse(180, 340, 70, 28, 0.4, 0, Math.PI * 2)
   g.fill()
+  g.globalAlpha = 1
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
   return tex
 }
 
-function dressField(scene: THREE.Scene, low: boolean) {
-  const wood = new THREE.MeshStandardMaterial({ color: 0x6a4a2c, roughness: 0.9 })
-  const stone = new THREE.MeshStandardMaterial({ color: 0x8a8478, roughness: 0.92 })
-  const leaf = new THREE.MeshStandardMaterial({ color: 0x3f7a34, roughness: 1 })
+function dressField(scene: THREE.Scene, low: boolean, grogCamp: boolean) {
+  const wood = new THREE.MeshStandardMaterial({ color: 0x4a3424, roughness: 0.9 })
+  const stone = new THREE.MeshStandardMaterial({ color: 0x6a645c, roughness: 0.92 })
+  const leaf = new THREE.MeshStandardMaterial({ color: 0x24301c, roughness: 1 })
+  const thatch = new THREE.MeshStandardMaterial({ color: grogCamp ? 0x3a2a18 : 0x6a4a28, roughness: 1 })
+  const hide = new THREE.MeshStandardMaterial({ color: grogCamp ? 0x2a2218 : 0x5a4030, roughness: 0.95 })
   const logs = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.08, 0.1, 1.5, 5), wood, 28)
   const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.45, 0), stone, 10)
   const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.12, 0.16, 1.1, 5), wood, 8)
@@ -850,6 +895,29 @@ function dressField(scene: THREE.Scene, low: boolean) {
   rocks.instanceMatrix.needsUpdate = true
   trunks.instanceMatrix.needsUpdate = true
   crowns.instanceMatrix.needsUpdate = true
+
+  const hall = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.1, 1.4), hide)
+  hall.position.set(grogCamp ? 4.2 : -4.4, 0.55, -1.2)
+  hall.castShadow = !low
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.7, 0.9, 4), thatch)
+  roof.position.set(hall.position.x, 1.35, hall.position.z)
+  roof.rotation.y = Math.PI / 4
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 0.08), wood)
+  door.position.set(hall.position.x, 0.35, hall.position.z + (grogCamp ? -0.72 : 0.72))
+  scene.add(hall, roof, door)
+  const stakes = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.04, 0.05, 0.9, 4), wood, 8)
+  for (let i = 0; i < 8; i++) {
+    _v.set(hall.position.x - 1.3 + i * 0.38, 0.45, hall.position.z + 1.1)
+    _m.compose(_v, _q.identity(), _one)
+    stakes.setMatrixAt(i, _m)
+  }
+  stakes.instanceMatrix.needsUpdate = true
+  scene.add(stakes)
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.45, 6), new THREE.MeshBasicMaterial({ color: 0xff5a18 }))
+  flame.position.set(0.2, 0.35, 1.8)
+  const flame2 = flame.clone()
+  flame2.position.set(-2.2, 0.4, -0.4)
+  scene.add(flame, flame2)
 }
 
 function poolNumbers(scene: THREE.Scene, count: number) {

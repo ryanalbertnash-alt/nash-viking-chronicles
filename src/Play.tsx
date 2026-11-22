@@ -16,7 +16,7 @@ import { driveRoutes, riverRoute } from "@/shared/routes.ts"
 import type { BuildingId, PublicPlayer, PublicTown, Stance } from "@/shared/types.ts"
 import type { VoiceCommand } from "@/shared/voice.ts"
 import { nearestPost, postById, postSpeech, TRADING_POSTS } from "@/shared/posts.ts"
-import { REPORT_INFO, REPORT_TYPES, reportSpeech } from "@/shared/reports.ts"
+import { DRIVE_REPORTS, REPORT_INFO, REPORT_TYPES, reportDistance, reportSpeech } from "@/shared/reports.ts"
 import type { NavPlan } from "@/shared/nav.ts"
 import { matchName, parseCommand } from "@/shared/voice.ts"
 import { apiUrl, isNativeApp } from "@/native.ts"
@@ -64,6 +64,8 @@ function Board({
   const [flatBattle, setFlatBattle] = useState(false)
   const [level, setLevel] = useState(70)
   const [roadLimit, setRoadLimit] = useState<number | null>(null)
+  const [roadAlert, setRoadAlert] = useState("")
+  const [roadNote, setRoadNote] = useState("")
   const roadLimitRef = useRef<number | null>(null)
   roadLimitRef.current = roadLimit
   const navRef = useRef<NavPlan | null>(null)
@@ -88,6 +90,9 @@ function Board({
   const routeRef = useRef(routeId)
   routeRef.current = routeId
   const scaleRef = useRef(scale)
+  const sendRef = useRef(send)
+  sendRef.current = send
+  const alertRef = useRef("")
   scaleRef.current = scale
 
   const route = driveRoutes.find((r) => r.id === routeId) ?? driveRoutes[0]
@@ -148,12 +153,19 @@ function Board({
     })
   }, [you.faction])
 
+  const movingFast = speed > LOCK_KMH && !passenger
   useEffect(() => {
-    if (speed > LOCK_KMH && !passenger) {
-      setSheet(null)
-      setPending(null)
-    }
-  }, [speed, passenger])
+    if (!movingFast) return
+    setSheet(null)
+    setPending(null)
+    setBattle((open) => {
+      if (!open) return open
+      setRoadNote(open.summary)
+      window.setTimeout(() => setRoadNote(""), 9000)
+      void narrate(open.summary)
+      return undefined
+    })
+  }, [movingFast])
 
   const seenFeed = useRef(0)
   useEffect(() => {
@@ -169,8 +181,12 @@ function Board({
       if (youRef.current.faction === "grog") playSfx("roar")
       const lead = youRef.current.warband[0]
       if (lead) void playVoice(lead, "cry")
-      setBattle(result)
-      if (speedRef.current > LOCK_KMH && !passRef.current) void narrate(result.summary)
+      const driving = speedRef.current > LOCK_KMH && !passRef.current
+      if (driving) {
+        setRoadNote(result.summary)
+        window.setTimeout(() => setRoadNote(""), 9000)
+        void narrate(result.summary)
+      } else setBattle(result)
       return
     }
     const joined = champions.find((c) => text.startsWith(c.name) && text.includes("joins"))
@@ -370,9 +386,43 @@ function Board({
         if (delta > 180) delta = 360 - delta
         if (delta > 70) continue
       }
+      const info = REPORT_INFO[report.type]
+      const line = `${info.title} · ${info.label} · ${reportDistance(dist)}`
+      if (alertRef.current !== line) {
+        alertRef.current = line
+        setRoadAlert(line)
+      }
       if (said.current.has(report.id)) continue
       said.current.add(report.id)
       speak(reportSpeech(report.type, dist), true)
+    }
+    if (!reports.some((report) => approachingReport(here, report, plan, proj))) {
+      if (alertRef.current) {
+        alertRef.current = ""
+        setRoadAlert("")
+      }
+    }
+    for (const town of worldRef.current.towns) {
+      if (!town.ownerId || town.ownerId === youRef.current.id) continue
+      if (speedKmh < 8) continue
+      const key = `enter:${town.id}`
+      if (said.current.has(key)) continue
+      let ahead = haversine(here, town)
+      if (plan && proj) {
+        const mark = projectRoute(plan.coords, town.lat, town.lng)
+        if (mark.off > 280) continue
+        ahead = mark.along - proj.along
+      } else {
+        const face = bearingFrom(here, town)
+        let delta = Math.abs(face - here.heading) % 360
+        if (delta > 180) delta = 360 - delta
+        if (delta > 70) continue
+      }
+      if (ahead > 220 || ahead < 30) continue
+      said.current.add(key)
+      const kind = town.ownerFaction === "grog" ? "Grog camp" : "Village"
+      speak(`${kind} in ${town.name}. The fight is called.`, true)
+      sendRef.current({ t: "do", action: "attackTown", townId: town.id, stance: "smash" })
     }
     for (const post of TRADING_POSTS) {
       let dist = haversine(here, post)
@@ -407,6 +457,7 @@ function Board({
     const res = await fetch(apiUrl(`/api/route?flat=${here.lat}&flng=${here.lng}&tlat=${lat}&tlng=${lng}&label=${encodeURIComponent(label)}`))
     if (!res.ok) { speak("The road-finder did not answer.", true); return }
     const plan = (await res.json()) as NavPlan
+    setHits([])
     said.current.clear()
     for (const town of worldRef.current.towns) {
       if (haversine(here, town) < 900) sim.current.stopped.add(town.id)
@@ -531,6 +582,7 @@ function Board({
   const nextTurn = nav && along ? nav.steps.find((s) => s.at > along.along + 30) : null
   const eta = nav && along ? Math.max(1, Math.round((nav.seconds * Math.max(0, 1 - along.along / Math.max(nav.meters, 1))) / 60)) : null
   const nearPost = nearestPost(pos, 180)
+  const townBanner = townOnRoute(pos, nav, mapTowns, speed)
   const post = sheet?.kind === "post" && sheet.id ? postById(sheet.id) : undefined
   const objective = !you.townIds.length
     ? `Claim ${nearest?.name ?? "the town you stand in"}.`
@@ -599,12 +651,34 @@ function Board({
             </div>
           </div>
           {link !== "live" && <div className="banner link-down">Reconnecting to the saga.</div>}
+          <form className="dest-search" onSubmit={(e) => {
+            e.preventDefault()
+            void fetch(apiUrl(`/api/geocode?q=${encodeURIComponent(query)}`)).then((r) => r.json()).then((rows) => {
+              const list = (rows as { name: string; lat: number; lng: number }[]).slice(0, 4)
+              if (!list.length) { setHits([]); speak(`I cannot find ${query}.`, true); return }
+              if (list.length === 1) { setHits([]); void followNav(list[0].name, list[0].lat, list[0].lng); return }
+              setHits(list)
+            })
+          }}>
+            <input aria-label="Destination" placeholder="Where to?" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <Button type="submit" size="sm">Go</Button>
+          </form>
+          {hits.length > 1 && (
+            <div className="dest-hits">
+              {hits.map((hit) => (
+                <button type="button" key={`${hit.name}:${hit.lat}`} onClick={() => { setHits([]); setQuery(hit.name); void followNav(hit.name, hit.lat, hit.lng) }}>{hit.name}</button>
+              ))}
+            </div>
+          )}
           {nextTurn && (
             <div className="banner">
               <b>{nextTurn.say}</b>
               <span> · {formatMeters(Math.max(0, nextTurn.at - (along?.along ?? 0)))}{eta != null ? ` · ETA ${eta} min` : ""}{nav ? ` · ${nav.label}` : ""}</span>
             </div>
           )}
+          {roadAlert && <div className="banner slim">{roadAlert}</div>}
+          {roadNote && <div className="banner slim">{roadNote}</div>}
+          {townBanner && <div className="banner slim">{townBanner.kind} · {townBanner.name} · {formatMeters(townBanner.ahead)}</div>}
           {locked && <div className="banner">Adventure. Hands on the wheel.</div>}
           {!locked && you.marches.length > 0 && (
             <div className="banner">
@@ -636,6 +710,17 @@ function Board({
               <Button onClick={() => send({ t: "do", action: "restock" })}>Restock</Button>
             </div>
           )}
+          <div className="report-bar" aria-label="Road reports">
+            {DRIVE_REPORTS.map((kind) => (
+              <button key={kind} type="button" title={`${REPORT_INFO[kind].title}. ${REPORT_INFO[kind].label}`} onClick={() => {
+                send({ t: "do", action: "report", kind })
+                speak(`${REPORT_INFO[kind].title}. ${REPORT_INFO[kind].label}. Marked.`, true)
+              }}>
+                <img alt="" src={asset(REPORT_INFO[kind].icon)} />
+                <small>{REPORT_INFO[kind].label}</small>
+              </button>
+            ))}
+          </div>
           <div className="voice-row">
             <button
               className={`voice ${hot ? "hot" : ""}`}
@@ -788,6 +873,49 @@ function Board({
       </Dialog>
     </main>
   )
+}
+
+function approachingReport(
+  here: { lat: number; lng: number; heading: number },
+  report: { lat: number; lng: number },
+  plan: NavPlan | null,
+  proj: { along: number } | null,
+) {
+  if (plan && proj) {
+    const mark = projectRoute(plan.coords, report.lat, report.lng)
+    const ahead = mark.along - proj.along
+    return mark.off <= 70 && ahead >= 40 && ahead <= 900
+  }
+  const dist = haversine(here, report)
+  if (dist > 900 || dist < 40) return false
+  const face = bearingFrom(here, report)
+  let delta = Math.abs(face - here.heading) % 360
+  if (delta > 180) delta = 360 - delta
+  return delta <= 70
+}
+
+function townOnRoute(
+  pos: { lat: number; lng: number },
+  nav: NavPlan | null,
+  towns: PublicTown[],
+  speed: number,
+) {
+  if (speed < 8) return null
+  let best: { name: string; kind: string; ahead: number } | null = null
+  const along = nav ? projectRoute(nav.coords, pos.lat, pos.lng) : null
+  for (const town of towns) {
+    if (!town.ownerId) continue
+    let ahead = haversine(pos, town)
+    if (nav && along) {
+      const mark = projectRoute(nav.coords, town.lat, town.lng)
+      if (mark.off > 400) continue
+      ahead = mark.along - along.along
+    }
+    if (ahead < 40 || ahead > 700) continue
+    const kind = town.ownerFaction === "grog" ? "Grog camp" : "Village"
+    if (!best || ahead < best.ahead) best = { name: town.name, kind, ahead }
+  }
+  return best
 }
 
 function nearestTown(pos: { lat: number; lng: number }, towns: PublicTown[]) {

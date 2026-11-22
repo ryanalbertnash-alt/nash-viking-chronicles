@@ -17,11 +17,33 @@ export async function searchPlaces(query: string): Promise<Place[]> {
     lng: t.lng,
   }))
   if (local.length) return local
+  const named = await nominatim(q)
+  if (named.length) return named
+  return photon(q)
+}
+
+async function nominatim(q: string): Promise<Place[]> {
   const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=ca,us&q=${encodeURIComponent(q)}`
   const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" } })
   if (!res.ok) return []
   const rows = (await res.json()) as { display_name?: string; lat: string; lon: string }[]
   return rows.map((r) => ({ name: (r.display_name ?? q).split(",").slice(0, 2).join(","), lat: Number(r.lat), lng: Number(r.lon) }))
+}
+
+async function photon(q: string): Promise<Place[]> {
+  const url = `https://photon.komoot.io/api/?limit=5&lang=en&q=${encodeURIComponent(q)}`
+  const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" } })
+  if (!res.ok) return []
+  const json = (await res.json()) as { features?: { geometry?: { coordinates?: [number, number] }; properties?: { name?: string; city?: string; state?: string; countrycode?: string } }[] }
+  const rows = json.features ?? []
+  return rows.flatMap((f) => {
+    const code = (f.properties?.countrycode ?? "").toUpperCase()
+    if (code && code !== "CA" && code !== "US") return []
+    const coords = f.geometry?.coordinates
+    if (!coords) return []
+    const place = [f.properties?.name, f.properties?.city, f.properties?.state].filter(Boolean).slice(0, 2).join(", ")
+    return [{ name: place || q, lat: coords[1], lng: coords[0] }]
+  })
 }
 
 export async function roadAt(lat: number, lng: number): Promise<{ road: string; limit: number } | null> {
@@ -39,9 +61,9 @@ export async function roadAt(lat: number, lng: number): Promise<{ road: string; 
 
 export async function buildRoute(from: { lat: number; lng: number }, to: { lat: number; lng: number }, label: string): Promise<NavPlan> {
   try {
-    return await valhallaRoute(from, to, label)
+    return await osrmRoute(from, to, label)
   } catch {
-    return osrmRoute(from, to, label)
+    return valhallaRoute(from, to, label)
   }
 }
 

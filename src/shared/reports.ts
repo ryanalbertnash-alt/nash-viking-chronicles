@@ -20,6 +20,9 @@ export const REPORT_TYPES = [
 
 export type ReportType = (typeof REPORT_TYPES)[number]
 
+/** The six marks a driver can tap while the car is moving. */
+export const DRIVE_REPORTS = ["police", "crash", "construction", "hazard", "jam", "closed"] as const
+
 export type RoadReport = {
   id: string
   type: ReportType
@@ -59,9 +62,9 @@ export const REPORT_INFO: Record<ReportType, MarkInfo> = {
   },
   construction: {
     label: "Construction",
-    title: "Fortress wall",
-    theme: "Dwarves and trolls are raising a fortress wall.",
-    cry: "Dwarves and trolls are raising a fortress wall, {dist} ahead.",
+    title: "Trolls",
+    theme: "Trolls are tearing up the road.",
+    cry: "Trolls are working the road, {dist} ahead.",
     minutes: 180, gold: 26, xp: 40, icon: "marks/construction.svg",
   },
   crash: {

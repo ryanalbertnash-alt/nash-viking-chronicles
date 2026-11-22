@@ -369,36 +369,33 @@ select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b
 .lines { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 0; overflow: auto; }
 .battle .log { margin: 0; font-size: 15px; line-height: 1.4; }
 
-.pin { display: flex; flex-direction: column; align-items: center; gap: 2px; transform: translateY(4px); }
-.pin .dot { width: 14px; height: 14px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid #0c0a08; }
+.pin { display: flex; flex-direction: column; align-items: center; gap: 1px; transform: translateY(2px); }
+.pin .dot { width: 8px; height: 8px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 1px solid #0c0a08; }
 .pin.viking .dot { background: var(--viking); }
 .pin.grog .dot { background: var(--grog); }
 .pin.neutral .dot { background: #8a8178; }
 .pin.mine .dot { box-shadow: 0 0 0 3px var(--gold); }
-.pin .label, .hall-mark .label, .rival-mark .label {
+.pin .label, .hall-mark .label, .rival-mark .label, .mount-token .label, .ship-mark .label, .post-mark .label {
+  display: none;
   background: rgba(12,10,8,.86);
   border: 1px solid rgba(226,192,122,.35);
   color: var(--ink);
   border-radius: 999px;
-  padding: 1px 6px;
-  font-size: 11px;
+  padding: 0 4px;
+  font-size: 9px;
   white-space: nowrap;
 }
-.map-far .label { display: none; }
-.map-far .pin.report .label,
-.map-far .post-mark .label,
-.map-far .rider .label { display: inline-flex; }
-.pin.report .label, .post-mark .label, .rider .label {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.15;
+.map-close .pin .label,
+.map-close .hall-mark .label,
+.map-close .post-mark .label { display: inline-flex; }
+.pin.report .label {
+  display: block;
+  max-width: 58px;
+  line-height: 1.1;
   text-align: center;
-  white-space: normal;
-  max-width: 132px;
+  font-size: 9px;
 }
-.pin .label small, .rider .label small { color: #e2c07a; font-size: 10px; }
-.pin .mark, .rider img { width: 40px; height: 40px; filter: drop-shadow(0 2px 2px rgba(0,0,0,.65)); }
+.pin .mark, .post-mark .mark { width: 22px; height: 22px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
 .rider { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .mark-choice { display: flex; gap: 8px; align-items: center; text-align: left; width: 100%; }
 .mark-choice img { width: 36px; height: 36px; flex: none; }
@@ -415,7 +412,7 @@ select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b
   filter: drop-shadow(0 2px 2px rgba(0,0,0,.6));
 }
 .hall-mark, .rival-mark, .ship-mark { display: flex; flex-direction: column; align-items: center; }
-.hall-mark img, .ship-mark img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; border: 2px solid var(--gold); }
+.hall-mark img, .ship-mark img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; border: 1px solid var(--gold); }
 .ship-mark img { border-radius: 8px; border-color: var(--viking); }
 .rival-mark .badge { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; font-family: Cinzel, serif; font-size: 12px; }
 .rival-mark.viking .badge { background: #1d3a46; color: #d5e7ef; border: 1px solid var(--viking); }
@@ -447,10 +444,43 @@ select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b
 }
 .dialog-card h3 { font-family: Cinzel, Palatino, serif; margin: 0 0 8px; }
 
-.mount-token { display: flex; flex-direction: column; align-items: center; width: 78px; z-index: 5; }
-.mount-token .bob { position: relative; width: 78px; height: 56px; }
-.mount-token .beast { width: 78px; height: 48px; filter: drop-shadow(0 3px 2px rgba(0,0,0,.75)); }
-.mount-token .face { position: absolute; left: 34px; top: 0; width: 18px; height: 18px; border-radius: 50%; object-fit: cover; border: 1px solid var(--gold); }
+.mount-token { display: flex; flex-direction: column; align-items: center; width: 32px; z-index: 5; }
+.mount-token .bob { position: relative; width: 32px; height: 24px; }
+.mount-token .beast { width: 32px; height: 20px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
+.mount-token .face { position: absolute; left: 14px; top: 0; width: 9px; height: 9px; border-radius: 50%; object-fit: cover; border: 1px solid var(--gold); }
+.dest-search { display: flex; gap: 6px; pointer-events: auto; margin-top: 6px; }
+.dest-search input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(12,10,8,.92);
+  color: var(--ink);
+  border: 1px solid #8a7040;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font: inherit;
+}
+.dest-hits { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; pointer-events: auto; max-height: 132px; overflow: auto; }
+.dest-hits button {
+  text-align: left;
+  background: rgba(12,10,8,.92);
+  color: var(--ink);
+  border: 1px solid #6d5834;
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+.report-bar { display: flex; gap: 4px; overflow: auto; width: min(640px, 100%); pointer-events: auto; }
+.report-bar button {
+  flex: 1;
+  min-width: 52px;
+  background: rgba(12,10,8,.88);
+  color: var(--ink);
+  border: 1px solid #6d5834;
+  border-radius: 10px;
+  padding: 4px 2px 3px;
+}
+.report-bar img { width: 22px; height: 22px; display: block; margin: 0 auto; }
+.report-bar small { display: block; font-size: 9px; color: #e2c07a; line-height: 1.1; }
+.banner.slim { font-size: 13px; padding: 6px 10px; }
 .mount-token.friend { filter: drop-shadow(0 0 4px var(--gold)); }
 .mount-token.trot .bob { animation: gallop 0.55s ease-in-out infinite; }
 .mount-token.gallop .bob { animation: gallop 0.28s ease-in-out infinite; }
