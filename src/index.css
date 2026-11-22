@@ -395,7 +395,39 @@ select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b
   text-align: center;
   font-size: 9px;
 }
-.pin .mark, .post-mark .mark { width: 22px; height: 22px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
+.pin .mark, .post-mark .mark { width: 18px; height: 18px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
+.pin.report .count, .pin.cluster .label, .hall-mark.cluster .label { display: block; min-width: 14px; text-align: center; }
+.map-drive .pin .mark { width: 14px; height: 14px; }
+.map-drive .pin .dot, .map-drive .hall-mark .dot { width: 6px; height: 6px; }
+.map-drive .mount-token { width: 22px; }
+.map-drive .mount-token .bob { width: 22px; height: 16px; }
+.map-drive .mount-token .beast { width: 22px; height: 14px; }
+.map-drive .hall-mark img { width: 12px; height: 12px; }
+.map-drive .hall-mark .label,
+.map-drive .pin .label,
+.map-drive .post-mark .label,
+.map-drive .mount-token .label { display: none; }
+.map-drive .pin.cluster .label,
+.map-drive .hall-mark.cluster .label { display: block; }
+.slim-drive { padding-top: calc(6px + env(safe-area-inset-top)); }
+.drive-turn { margin: 8px 10px 0; }
+.eta-row, .change-dest {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+  background: rgba(12,10,8,.9);
+  color: var(--ink);
+  border: 1px solid #8a7040;
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+.eta-row { width: min(640px, 100%); }
+.eta-row b { font-variant-numeric: tabular-nums; }
+.eta-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-ink); font-size: 13px; }
+.change-dest { margin-top: 6px; font: inherit; }
+.b3-side { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.b3-face { width: 36px; height: 36px; object-fit: cover; object-position: center 18%; border-radius: 6px; border: 1px solid var(--gold); }
 .rider { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .mark-choice { display: flex; gap: 8px; align-items: center; text-align: left; width: 100%; }
 .mark-choice img { width: 36px; height: 36px; flex: none; }

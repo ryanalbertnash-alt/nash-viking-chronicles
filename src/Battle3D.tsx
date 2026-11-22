@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import * as THREE from "three"
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js"
 import { asset } from "@/art"
 import { playSfx } from "@/audio"
 import { Button } from "@/components/ui/button"
@@ -8,86 +10,30 @@ import { championById } from "@/shared/catalog.ts"
 import type { UnitClass } from "@/shared/army.ts"
 import type { BattleResult, Faction } from "@/shared/types.ts"
 
-const BONES = 13
-const PARENT = [-1, 0, 1, 2, 3, 3, 3, 5, 6, 1, 1, 9, 10]
-const REST: [number, number, number][] = [
-  [0, 0, 0],
-  [0, 0.92, 0],
-  [0, 0.16, 0],
-  [0, 0.28, 0],
-  [0, 0.34, 0],
-  [-0.24, 0.12, 0],
-  [0.24, 0.12, 0],
-  [0, -0.28, 0],
-  [0, -0.28, 0],
-  [-0.1, -0.08, 0],
-  [0.1, -0.08, 0],
-  [0, -0.32, 0],
-  [0, -0.32, 0],
-]
+type Pose = "idle" | "run" | "attack" | "shoot" | "hit" | "dead"
 
-type Weapon = "axe" | "sword" | "bow" | "maul"
-type State = "idle" | "run" | "attack" | "shoot" | "hit" | "dead"
-
-type Unit = {
+type Fighter = {
   id: string
   name: string
   side: "atk" | "def"
   cls: UnitClass
-  faction: Faction
-  art: string | null
   hero: boolean
   hp: number
-  max: number
   alive: boolean
   x: number
-  y: number
   z: number
-  scale: number
-  state: State
-  stateT: number
-  seed: number
-  rot: Float32Array
-  weapon: Weapon
-  beard: boolean
-  horns: boolean
-  tusks: boolean
-  mount: "none" | "horse" | "boar"
-  guard: number
-  boost: number
-  skin: number
-  hair: number
-  leather: number
-  metal: number
-  cloth: number
-  fur: number
+  state: Pose
+  root: THREE.Group
+  mixer: THREE.AnimationMixer
+  actions: Map<string, THREE.AnimationAction>
+  playing: string
+  struck: boolean
   flash: number
+  materials: THREE.MeshStandardMaterial[]
 }
 
-type Part = {
-  mesh: THREE.InstancedMesh
-  bone: number
-  ox: number
-  oy: number
-  oz: number
-  rx: number
-  ry: number
-  rz: number
-  sx: number
-  sy: number
-  sz: number
-  color: (u: Unit) => number
-  show: (u: Unit) => boolean
-}
-
-const _m = new THREE.Matrix4()
-const _o = new THREE.Matrix4()
-const _q = new THREE.Quaternion()
-const _e = new THREE.Euler()
-const _v = new THREE.Vector3()
-const _s = new THREE.Vector3()
-const _one = new THREE.Vector3(1, 1, 1)
-const _c = new THREE.Color()
+const VIKING_URL = asset("models/kaykit-barbarian.glb")
+const ORC_URL = asset("models/quaternius-orc.glb")
 
 export function Battle3D({
   battle,
@@ -110,6 +56,8 @@ export function Battle3D({
   const [cds, setCds] = useState({ charge: 0, volley: 0, wall: 0 })
   const [done, setDone] = useState(false)
   const [target, setTarget] = useState("the line")
+  const leadAtk = battle.attackerChamps[0]
+  const leadDef = battle.defenderChamps[0]
 
   useEffect(() => {
     const el = host.current
@@ -117,193 +65,198 @@ export function Battle3D({
     let renderer: THREE.WebGLRenderer
     try {
       renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" })
-    } catch {
+    } catch (err) {
+      console.error("battle-gl", err)
       fallbackRef.current()
       return
     }
-    const cores = navigator.hardwareConcurrency || 4
-    const low = cores <= 4
-    const cap = low ? 14 : 22
-    renderer.setPixelRatio(low ? 1 : Math.min(1.5, window.devicePixelRatio || 1))
+    const low = (navigator.hardwareConcurrency || 4) <= 4
+    const cap = low ? 6 : 8
+    renderer.setPixelRatio(Math.min(low ? 1 : 1.5, window.devicePixelRatio || 1))
     renderer.setSize(el.clientWidth, el.clientHeight)
     renderer.outputColorSpace = THREE.SRGBColorSpace
-    renderer.shadowMap.enabled = !low
+    renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.setClearColor(0x1a120e)
     el.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    scene.fog = new THREE.Fog(0x2a1812, 9, 26)
+    scene.fog = new THREE.Fog(0x24160f, 8, 18)
     scene.background = new THREE.Color(0x1c1410)
-    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 80)
-    const camBase = new THREE.Vector3(0, 7.2, 11)
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.08, 40)
     const fit = () => {
       const aspect = el.clientWidth / Math.max(1, el.clientHeight)
       camera.aspect = aspect
-      camera.fov = aspect < 0.85 ? 64 : 46
-      camBase.set(0, aspect < 0.85 ? 7.6 : 6.2, aspect < 0.85 ? 10.4 : 12.2)
+      camera.fov = aspect < 0.85 ? 40 : 32
       camera.updateProjectionMatrix()
     }
     fit()
+    camera.position.set(0.55, 2.35, 4.7)
+    camera.lookAt(0, 0.85, 0)
 
-    scene.add(new THREE.HemisphereLight(0xffb070, 0x2a1a12, 0.55))
-    const sun = new THREE.DirectionalLight(0xffc48a, 1.35)
-    sun.position.set(-8, 14, 6)
-    if (!low) {
-      sun.castShadow = true
-      sun.shadow.mapSize.set(1024, 1024)
-      sun.shadow.camera.near = 2
-      sun.shadow.camera.far = 40
-      sun.shadow.camera.left = -12
-      sun.shadow.camera.right = 12
-      sun.shadow.camera.top = 12
-      sun.shadow.camera.bottom = -12
-    }
+    scene.add(new THREE.HemisphereLight(0xffc48a, 0x2a1810, 0.55))
+    const sun = new THREE.DirectionalLight(0xffe0b0, 1.7)
+    sun.position.set(-4, 8, 5)
+    sun.castShadow = true
+    sun.shadow.mapSize.set(1024, 1024)
+    sun.shadow.camera.near = 1
+    sun.shadow.camera.far = 24
+    sun.shadow.camera.left = -8
+    sun.shadow.camera.right = 8
+    sun.shadow.camera.top = 8
+    sun.shadow.camera.bottom = -8
     scene.add(sun)
-    const torch = new THREE.PointLight(0xff5a18, 18, 16)
-    torch.position.set(-1.2, 1.4, -2.2)
-    const torch2 = new THREE.PointLight(0xff3a10, 12, 12)
-    torch2.position.set(2.4, 1.1, 1.6)
-    scene.add(torch, torch2)
+    const fire = new THREE.PointLight(0xff4a12, 28, 9)
+    fire.position.set(-0.2, 0.6, 1.5)
+    const fire2 = new THREE.PointLight(0xff6a20, 16, 7)
+    fire2.position.set(1.6, 0.5, -1.4)
+    scene.add(fire, fire2)
 
     const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(18, low ? 24 : 48),
-      new THREE.MeshStandardMaterial({ map: fieldTexture(), roughness: 1, metalness: 0 }),
+      new THREE.PlaneGeometry(14, 10),
+      new THREE.MeshStandardMaterial({ map: boardTexture(), roughness: 0.92, metalness: 0 }),
     )
     ground.rotation.x = -Math.PI / 2
-    ground.receiveShadow = !low
+    ground.receiveShadow = true
     scene.add(ground)
-    dressField(scene, low, battle.defenderFaction === "grog")
+    dressBoard(scene, battle.defenderFaction === "grog")
 
-    const units = buildRoster(battle, cap)
-    const boneWorld = units.map(() => Array.from({ length: BONES }, () => new THREE.Matrix4()))
-    const parts = makeParts(units.length)
-    for (const part of parts) scene.add(part.mesh)
-    paintColors(parts, units)
-    const portraits = units.map((u) => {
-      if (!u.hero || !u.art) return null
-      const tex = new THREE.TextureLoader().load(asset(u.art))
-      tex.colorSpace = THREE.SRGBColorSpace
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }))
-      sprite.scale.set(0.62, 0.78, 1)
-      scene.add(sprite)
-      return sprite
-    })
-    const headPart = parts[4]
-
-    const arrows = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.02, 0.02, 0.85, 4), new THREE.MeshBasicMaterial({ color: 0xf4e2b0 }), 48)
-    arrows.frustumCulled = false
-    arrows.count = 48
-    scene.add(arrows)
-    const arrowState = Array.from({ length: 48 }, () => ({ on: false, t: 0, from: new THREE.Vector3(), to: new THREE.Vector3(), hit: -1 }))
-
-    const sparks = new THREE.InstancedMesh(new THREE.SphereGeometry(0.06, 4, 3), new THREE.MeshBasicMaterial({ color: 0xff5a2a }), low ? 40 : 90)
+    const sparks = new THREE.InstancedMesh(new THREE.SphereGeometry(0.045, 5, 4), new THREE.MeshBasicMaterial({ color: 0xff3a22 }), 80)
     sparks.frustumCulled = false
     scene.add(sparks)
-    const sparkState = Array.from({ length: sparks.count }, () => ({ on: false, life: 0, v: new THREE.Vector3(), p: new THREE.Vector3() }))
+    const sparkState = Array.from({ length: sparks.count }, () => ({ on: false, life: 0, v: new THREE.Vector3(), p: new THREE.Vector3(), blood: true }))
+    const arrows = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.012, 0.012, 0.7, 4), new THREE.MeshStandardMaterial({ color: 0xd8c49a, roughness: 0.5 }), 24)
+    arrows.frustumCulled = false
+    scene.add(arrows)
+    const arrowState = Array.from({ length: 24 }, () => ({ on: false, t: 0, from: new THREE.Vector3(), to: new THREE.Vector3(), hit: -1 }))
 
-    const nums = poolNumbers(scene, 12)
+    let alive = true
+    let ended = false
+    const fighters: Fighter[] = []
     const cd = { charge: 0, volley: 0, wall: 0 }
     let kills = 0
     let combo = 0
     let comboLeft = 0
-    let slow = 0
     let shake = 0
-    let ended = false
-    let hudTick = 0
-    let alive = true
-    const focus = { id: units.find((u) => u.side === "def")?.id ?? "" }
+    let slow = 0
+    const focus = { id: "" }
+    const _c = new THREE.Color()
+    const _m = new THREE.Matrix4()
+    const _q = new THREE.Quaternion()
+    const _v = new THREE.Vector3()
 
-    const ray = new THREE.Raycaster()
-    const pointer = new THREE.Vector2()
-    const onPointer = (ev: PointerEvent) => {
-      const rect = renderer.domElement.getBoundingClientRect()
-      pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1
-      pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1
-      ray.setFromCamera(pointer, camera)
-      const hits = ray.intersectObjects(parts.map((p) => p.mesh))
-      const hit = hits[0]
-      if (!hit || hit.instanceId == null) return
-      const u = units[hit.instanceId]
-      if (!u?.alive) return
-      focus.id = u.id
-      setTarget(u.name)
-      if (u.side === "def") strike("melee")
+    function spawnSpark(x: number, y: number, z: number, blood: boolean) {
+      const slot = sparkState.find((s) => !s.on)
+      if (!slot) return
+      slot.on = true
+      slot.blood = blood
+      slot.life = 0.45
+      slot.p.set(x, y, z)
+      slot.v.set((Math.random() - 0.5) * 2.2, 1.2 + Math.random() * 1.6, (Math.random() - 0.5) * 2.2)
+      sparks.setColorAt(sparkState.indexOf(slot), _c.setHex(blood ? 0x8a1410 : 0xffb15a))
     }
-    renderer.domElement.addEventListener("pointerdown", onPointer)
 
-    function nearest(from: Unit) {
-      let best: Unit | null = null
+    function hurt(u: Fighter, amount: number) {
+      if (!u.alive || ended) return
+      u.hp -= amount
+      u.flash = 0.18
+      for (let i = 0; i < 4; i++) spawnSpark(u.x, 1, u.z, true)
+      if (u.hp <= 0) {
+        u.alive = false
+        u.state = "dead"
+        setClip(u, "dead")
+        kills += 1
+        combo += 1
+        comboLeft = 2
+        slow = 0.28
+        shake = Math.min(0.2, shake + 0.08)
+        setKills(kills)
+        setCombo(combo)
+        playSfx(u.cls === "monster" ? "roar" : "shield")
+      } else {
+        u.state = "hit"
+        setClip(u, "hit")
+        playSfx("clash")
+      }
+    }
+
+    const loader = new GLTFLoader()
+    const ready = Promise.all([loader.loadAsync(VIKING_URL), loader.loadAsync(ORC_URL)]).then(([viking, orc]) => {
+      if (!alive) return
+      const roster = buildRoster(battle, cap)
+      for (const spec of roster) {
+        const rig = spec.faction === "grog" ? orc : viking
+        const root = cloneSkinned(rig.scene) as THREE.Group
+        prepare(root, spec.faction === "grog" ? 1.85 : 1.55, spec.faction === "grog")
+        const base = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.34, 0.38, 0.05, 18),
+          new THREE.MeshStandardMaterial({ color: spec.side === "atk" ? 0xc9a15a : 0x6e2e28, metalness: 0.35, roughness: 0.5 }),
+        )
+        base.position.y = 0.025
+        base.receiveShadow = true
+        const holder = new THREE.Group()
+        holder.add(base)
+        holder.add(root)
+        holder.position.set(spec.x, 0, spec.z)
+        holder.rotation.y = spec.side === "atk" ? Math.PI / 2 : -Math.PI / 2
+        scene.add(holder)
+        const mixer = new THREE.AnimationMixer(root)
+        const actions = new Map<string, THREE.AnimationAction>()
+        for (const clip of rig.animations) actions.set(clip.name, mixer.clipAction(clip, root))
+        const materials: THREE.MeshStandardMaterial[] = []
+        root.traverse((obj) => {
+          const mesh = obj as THREE.Mesh
+          if (!mesh.isMesh) return
+          mesh.castShadow = true
+          mesh.frustumCulled = false
+          const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+          for (const mat of list) {
+            if (mat instanceof THREE.MeshStandardMaterial) materials.push(mat)
+          }
+        })
+        const fighter: Fighter = {
+          ...spec,
+          alive: true,
+          state: "run",
+          root: holder,
+          mixer,
+          actions,
+          playing: "",
+          struck: false,
+          flash: 0,
+          materials,
+        }
+        setClip(fighter, "run")
+        fighters.push(fighter)
+      }
+      focus.id = fighters.find((u) => u.side === "def")?.id ?? ""
+      el.dataset.ready = "yes"
+    }).catch((err) => {
+      console.error("battle-models", err)
+      if (alive) fallbackRef.current()
+    })
+    void ready
+
+    function nearest(from: Fighter) {
+      let best: Fighter | null = null
       let bestD = 1e9
-      for (const o of units) {
-        if (!o.alive || o.side === from.side) continue
-        if (focus.id && o.id === focus.id && o.side !== from.side) return o
-        const d = (o.x - from.x) ** 2 + (o.z - from.z) ** 2
-        if (d < bestD) { bestD = d; best = o }
+      for (const other of fighters) {
+        if (!other.alive || other.side === from.side) continue
+        if (focus.id && other.id === focus.id && other.side !== from.side) return other
+        const d = (other.x - from.x) ** 2 + (other.z - from.z) ** 2
+        if (d < bestD) { bestD = d; best = other }
       }
       return best
     }
 
-    function spawnSpark(x: number, y: number, z: number, color: number) {
-      const slot = sparkState.find((s) => !s.on)
-      if (!slot) return
-      slot.on = true
-      slot.life = 0.45
-      slot.p.set(x, y, z)
-      slot.v.set((Math.random() - 0.5) * 3, 1.4 + Math.random() * 2, (Math.random() - 0.5) * 3)
-      _c.setHex(color)
-      sparks.setColorAt(sparkState.indexOf(slot), _c)
-    }
-
-    function popNum(x: number, y: number, z: number, text: string) {
-      const slot = nums.find((n) => n.life <= 0)
-      if (!slot) return
-      const g = slot.ctx
-      g.clearRect(0, 0, 128, 64)
-      g.font = "bold 44px Palatino, serif"
-      g.lineWidth = 6
-      g.strokeStyle = "#1a100c"
-      g.fillStyle = "#f4e2b0"
-      g.strokeText(text, 8, 48)
-      g.fillText(text, 8, 48)
-      slot.tex.needsUpdate = true
-      slot.sprite.position.set(x, y, z)
-      slot.sprite.visible = true
-      slot.life = 0.7
-    }
-
-    function hurt(u: Unit, amount: number, from: Unit) {
-      if (!u.alive) return
-      const dmg = Math.max(1, Math.round(amount * (u.guard > 0 ? 0.45 : 1)))
-      u.hp -= dmg
-      u.state = u.hp <= 0 ? "dead" : "hit"
-      u.stateT = 0
-      u.flash = 0.28
-      const dir = from.side === "atk" ? 1 : -1
-      u.x += dir * 0.28
-      shake = Math.min(0.45, shake + (u.hero ? 0.22 : 0.1))
-      for (let i = 0; i < (low ? 2 : 5); i++) spawnSpark(u.x, 1.2, u.z, u.hp <= 0 ? 0xffd27a : 0x9a1c14)
-      if (u.hero || u.hp <= 0) popNum(u.x, 2.1, u.z, u.hp <= 0 ? "FALL" : String(dmg))
-      if (u.hp <= 0) {
-        u.alive = false
-        kills += 1
-        combo += 1
-        comboLeft = 2.2
-        slow = 0.35
-        playSfx(u.cls === "monster" ? "roar" : "shield")
-        setKills(kills)
-        setCombo(combo)
-      } else playSfx("clash")
-    }
-
-    function loose(from: Unit, to: Unit) {
+    function loose(from: Fighter, to: Fighter) {
       const slot = arrowState.find((a) => !a.on)
       if (!slot) return
       slot.on = true
       slot.t = 0
-      slot.from.set(from.x, 1.35, from.z)
-      slot.to.set(to.x, 1.15, to.z)
-      slot.hit = units.indexOf(to)
+      slot.from.set(from.x, 1.15, from.z)
+      slot.to.set(to.x, 1.05, to.z)
+      slot.hit = fighters.indexOf(to)
       playSfx("arrow")
     }
 
@@ -314,21 +267,17 @@ export function Battle3D({
         cd.charge = 5
         playSfx("horn")
         setPhase("Charge")
-        for (const u of units) if (u.alive && u.side === "atk") { u.state = "run"; u.boost = 1.4; u.stateT = 0 }
+        for (const u of fighters) if (u.alive && u.side === "atk") { u.state = "run"; setClip(u, "run") }
       } else if (kind === "shot") {
         if (cd.volley > 0) return
         cd.volley = 3.5
         setPhase("Shafts in the air")
-        for (const u of units) if (u.alive && u.side === "atk" && (u.cls === "archer" || u.weapon === "bow")) {
-          u.state = "shoot"
-          u.stateT = 0
-        }
+        for (const u of fighters) if (u.alive && u.side === "atk" && u.cls === "archer") { u.state = "shoot"; setClip(u, "shoot") }
       } else {
         if (cd.wall > 0) return
         cd.wall = 6
         playSfx("shield")
         setPhase("Shield wall")
-        for (const u of units) if (u.alive && u.side === "atk") u.guard = 2.4
       }
     }
 
@@ -341,15 +290,15 @@ export function Battle3D({
     }
 
     api.current = { strike, retreat: finish }
-
     const clock = new THREE.Clock()
-    let autoT = 0.4
+    let autoT = 0.6
+    let hudTick = 0
     const loop = () => {
       if (!alive) return
       const real = Math.min(0.05, clock.getDelta())
       const dt = real * (slow > 0 ? 0.35 : 1)
       if (slow > 0) slow -= real
-      shake = Math.max(0, shake - real * 1.6)
+      shake = Math.max(0, shake - real)
       cd.charge = Math.max(0, cd.charge - real)
       cd.volley = Math.max(0, cd.volley - real)
       cd.wall = Math.max(0, cd.wall - real)
@@ -362,61 +311,45 @@ export function Battle3D({
         hudTick = 0
         setCds({ charge: cd.charge, volley: cd.volley, wall: cd.wall })
       }
-
-      for (const u of units) {
-        if (u.state === "dead") { u.stateT += dt; continue }
-        u.guard = Math.max(0, u.guard - dt)
-        u.boost = Math.max(1, u.boost - dt)
+      for (const u of fighters) {
+        u.mixer.update(dt)
+        if (!u.alive) continue
         const foe = nearest(u)
-        const dist = foe ? Math.abs(foe.x - u.x) : 99
-        const reach = u.cls === "archer" || u.weapon === "bow" ? 4.2 : 1.15
-        if (u.state === "run") {
-          if (foe && dist < reach) {
-            u.state = reach > 2 ? "shoot" : "attack"
-            u.stateT = 0
-          } else {
-            const dir = u.side === "atk" ? 1 : -1
-            u.x += dir * 2.15 * u.boost * dt
+        const dist = foe ? Math.hypot(foe.x - u.x, foe.z - u.z) : 99
+        const ranged = u.cls === "archer"
+        const reach = ranged ? 3.2 : 0.85
+        if (u.state === "hit" || u.state === "attack" || u.state === "shoot") {
+          const action = u.actions.get(u.playing)
+          const t = action ? action.time / Math.max(0.05, action.getClip().duration) : 1
+          if (!u.struck && t > 0.42 && (u.state === "attack" || u.state === "shoot")) {
+            u.struck = true
+            if (u.state === "attack" && foe) hurt(foe, u.cls === "monster" ? 10 : 6)
+            if (u.state === "shoot" && foe) loose(u, foe)
           }
-        } else if (u.state === "attack" || u.state === "shoot" || u.state === "hit") {
-          const prev = u.stateT
-          u.stateT += dt
-          if (u.state === "attack" && prev < 0.22 && u.stateT >= 0.22 && foe) hurt(foe, u.cls === "monster" ? 9 : 5, u)
-          if (u.state === "shoot" && prev < 0.16 && u.stateT >= 0.16 && foe) loose(u, foe)
-          const limit = u.state === "hit" ? 0.28 : u.state === "shoot" ? 0.48 : 0.55
-          if (u.stateT > limit) {
-            u.state = foe && dist < reach + 0.4 ? (reach > 2 ? "shoot" : "attack") : "run"
-            u.stateT = 0
+          if (t > 0.92) {
+            u.struck = false
+            u.state = foe && dist < reach + 0.3 ? (ranged ? "shoot" : "attack") : "run"
+            setClip(u, u.state)
           }
-        } else u.stateT += dt
-      }
-
-      let flashed = false
-      for (let i = 0; i < units.length; i++) {
-        const u = units[i]
-        if (u.flash > 0) {
-          u.flash = Math.max(0, u.flash - dt)
-          _c.setHex(u.flash > 0 ? 0x9a1814 : u.skin)
-          headPart.mesh.setColorAt(i, _c)
-          flashed = true
+        } else if (foe && dist < reach) {
+          u.state = ranged ? "shoot" : "attack"
+          setClip(u, u.state)
+        } else if (foe) {
+          const step = 0.55 * dt
+          u.x += Math.sign(foe.x - u.x) * step
+          u.z += Math.sign(foe.z - u.z) * Math.min(step, Math.abs(foe.z - u.z))
+          if (u.state !== "run") { u.state = "run"; setClip(u, "run") }
         }
-        pose(u, clock.elapsedTime)
-        writeBones(u, boneWorld[i])
-        const face = portraits[i]
-        if (!face) continue
-        boneWorld[i][4].decompose(_v, _q, _s)
-        face.position.copy(_v)
-        face.position.y += 0.22 * u.scale
-        const sc = u.scale
-        face.scale.set(0.62 * sc, 0.78 * sc, 1)
-        face.visible = u.alive || u.stateT < 0.45
+        u.root.position.x = u.x
+        u.root.position.z = u.z
+        if (u.flash > 0) {
+          u.flash = Math.max(0, u.flash - real)
+          for (const mat of u.materials) {
+            mat.emissive.setHex(u.flash > 0 ? 0x8a1814 : 0x000000)
+            mat.emissiveIntensity = u.flash > 0 ? 0.8 : 0
+          }
+        }
       }
-      if (flashed && headPart.mesh.instanceColor) headPart.mesh.instanceColor.needsUpdate = true
-      for (const part of parts) {
-        for (let i = 0; i < units.length; i++) writePart(part, units[i], i, boneWorld[i])
-        part.mesh.instanceMatrix.needsUpdate = true
-      }
-
       for (let i = 0; i < arrowState.length; i++) {
         const a = arrowState[i]
         if (!a.on) {
@@ -424,18 +357,17 @@ export function Battle3D({
           arrows.setMatrixAt(i, _m)
           continue
         }
-        a.t += dt * 2.6
+        a.t += dt * 2.4
         _v.lerpVectors(a.from, a.to, Math.min(1, a.t))
-        _m.compose(_v, _q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), a.to.clone().sub(a.from).normalize()), _one)
+        _m.compose(_v, _q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), a.to.clone().sub(a.from).normalize()), new THREE.Vector3(1, 1, 1))
         arrows.setMatrixAt(i, _m)
         if (a.t >= 1) {
           a.on = false
-          const victim = units[a.hit]
-          if (victim?.alive) hurt(victim, 6, units.find((u) => u.side !== victim.side) ?? victim)
+          const victim = fighters[a.hit]
+          if (victim?.alive) hurt(victim, 5)
         }
       }
       arrows.instanceMatrix.needsUpdate = true
-
       for (let i = 0; i < sparkState.length; i++) {
         const s = sparkState[i]
         if (!s.on) {
@@ -443,54 +375,53 @@ export function Battle3D({
           sparks.setMatrixAt(i, _m)
           continue
         }
-        s.life -= dt
-        s.v.y -= dt * 6
-        s.p.addScaledVector(s.v, dt)
+        s.life -= real
+        s.v.y -= real * 4
+        s.p.addScaledVector(s.v, real)
         if (s.life <= 0 || s.p.y < 0.05) s.on = false
-        _m.compose(s.p, _q.identity(), _s.set(1, 1, 1))
+        _m.makeTranslation(s.p.x, s.p.y, s.p.z)
         sparks.setMatrixAt(i, _m)
       }
       sparks.instanceMatrix.needsUpdate = true
       if (sparks.instanceColor) sparks.instanceColor.needsUpdate = true
 
-      for (const n of nums) {
-        if (n.life <= 0) continue
-        n.life -= real
-        n.sprite.position.y += real * 0.7
-        n.sprite.visible = n.life > 0
-      }
-
-      let ax = 0
-      let az = 0
-      let an = 0
-      for (const u of units) if (u.alive) { ax += u.x; az += u.z; an++ }
-      if (!an) finish()
-      const aspect = camera.aspect
-      const gap = lineGap(units)
-      const zoom = THREE.MathUtils.clamp(gap / 5.5, 0.62, 1)
-      const baseZ = aspect < 0.85 ? 8.6 : 10.4
-      const baseY = aspect < 0.85 ? 5.2 : 4.6
-      camBase.set((an ? ax / an : 0) * 0.25, baseY * (0.75 + 0.25 * zoom), baseZ * zoom)
-      camera.position.lerp(camBase, 0.08)
-      camera.position.x += (Math.random() - 0.5) * shake
-      camera.position.y += (Math.random() - 0.5) * shake * 0.35
-      camera.lookAt(an ? ax / an : 0, 1, an ? az / an : 0)
-
-      if (auto && !ended) {
-        autoT -= real
-        if (autoT <= 0) {
-          autoT = 1.6
-          strike(Math.random() < 0.5 ? "charge" : "shot")
+      if (fighters.length) {
+        camera.position.x = 0.55 + (Math.random() - 0.5) * shake
+        camera.position.y = 2.35 + (Math.random() - 0.5) * shake * 0.3
+        camera.lookAt(0, 0.85, 0)
+        if (auto && !ended) {
+          autoT -= real
+          if (autoT <= 0) {
+            autoT = 1.8
+            strike(Math.random() < 0.55 ? "charge" : "shot")
+          }
         }
+        const livingDef = fighters.some((u) => u.alive && u.side === "def")
+        const livingAtk = fighters.some((u) => u.alive && u.side === "atk")
+        if (!ended && (!livingDef || !livingAtk)) finish()
       }
-      const livingDef = units.some((u) => u.alive && u.side === "def")
-      const livingAtk = units.some((u) => u.alive && u.side === "atk")
-      if (!ended && (!livingDef || !livingAtk)) finish()
-
       renderer.render(scene, camera)
       requestAnimationFrame(loop)
     }
     requestAnimationFrame(loop)
+
+    const ray = new THREE.Raycaster()
+    const pointer = new THREE.Vector2()
+    const onPointer = (ev: PointerEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect()
+      pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1
+      pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1
+      ray.setFromCamera(pointer, camera)
+      const hits = ray.intersectObjects(fighters.map((u) => u.root), true)
+      const hit = hits[0]
+      if (!hit) return
+      const owner = fighters.find((u) => isInside(u.root, hit.object))
+      if (!owner?.alive) return
+      focus.id = owner.id
+      setTarget(owner.name)
+      if (owner.side === "def") strike("melee")
+    }
+    renderer.domElement.addEventListener("pointerdown", onPointer)
 
     const onResize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight)
@@ -503,6 +434,7 @@ export function Battle3D({
       renderer.domElement.removeEventListener("pointerdown", onPointer)
       renderer.dispose()
       el.removeChild(renderer.domElement)
+      delete el.dataset.ready
       api.current = null
     }
   }, [battle, auto])
@@ -510,12 +442,18 @@ export function Battle3D({
   return (
     <section className="battle3d">
       <header className="b3-top">
-        <div><b>{battle.attackerFaction === "grog" ? "Grogs" : "Nash clan"}</b><span>{battle.attackerName}</span></div>
+        <div className="b3-side">
+          <img className="b3-face" alt="" src={asset(leadAtk?.art || "champions/ryan.jpg")} />
+          <div><b>{battle.attackerFaction === "grog" ? "Grogs" : "Nash clan"}</b><span>{leadAtk?.name ?? battle.attackerName}</span></div>
+        </div>
         <div className="b3-phase">
           <p className="eyebrow">{auto ? "Auto-battle" : "The field"} · {kills} fallen{combo > 1 ? ` · ${combo} combo` : ""}</p>
           <strong>{phase}</strong>
         </div>
-        <div><b>{battle.defenderFaction === "grog" ? "Grogs" : "Nash"}</b><span>{battle.defenderName}</span></div>
+        <div className="b3-side">
+          <img className="b3-face" alt="" src={asset(leadDef?.art || (battle.defenderFaction === "grog" ? "champions/gorgrath.jpg" : "scenes/wolves.jpg"))} />
+          <div><b>{battle.defenderFaction === "grog" ? "Grogs" : "Nash"}</b><span>{leadDef?.name ?? battle.defenderName}</span></div>
+        </div>
       </header>
       <div ref={host} className="b3-stage" />
       <p className="b3-target">Target: {target}. Tap a fighter.</p>
@@ -536,202 +474,82 @@ export function Battle3D({
   )
 }
 
-function lineGap(units: Unit[]) {
-  let a = 0
-  let b = 0
-  let na = 0
-  let nb = 0
-  for (const u of units) {
-    if (!u.alive) continue
-    if (u.side === "atk") { a += u.x; na++ } else { b += u.x; nb++ }
+function isInside(root: THREE.Object3D, obj: THREE.Object3D) {
+  let cur: THREE.Object3D | null = obj
+  while (cur) {
+    if (cur === root) return true
+    cur = cur.parent
   }
-  if (!na || !nb) return 6
-  return Math.abs(a / na - b / nb)
+  return false
 }
 
-function pose(u: Unit, time: number) {
-  const r = u.rot
-  r.fill(0)
-  const set = (b: number, x: number, y: number, z: number) => { r[b * 3] = x; r[b * 3 + 1] = y; r[b * 3 + 2] = z }
-  const k = u.stateT
-  if (u.state === "run") {
-    const w = Math.sin(time * 10 + u.seed)
-    set(2, 0.28, w * 0.08, 0)
-    set(5, -w * 0.7, 0, 0.25)
-    set(6, w * 0.7, 0, -0.25)
-    set(9, w * 0.95, 0, 0)
-    set(10, -w * 0.95, 0, 0)
-    set(11, Math.max(0, -w) * 1.1, 0, 0)
-    set(12, Math.max(0, w) * 1.1, 0, 0)
-  } else if (u.state === "attack") {
-    const s = Math.sin(Math.min(1, k / 0.45) * Math.PI)
-    set(3, 0.1, s * 0.7, 0)
-    set(6, -0.3 - s * 1.7, 0, -0.15)
-    set(8, -0.4 * s, 0, 0)
-    set(5, 0.4, 0, 0.4)
-  } else if (u.state === "shoot") {
-    const p = Math.min(1, k / 0.35)
-    set(5, -1.15 * p, 0, 0.2)
-    set(7, -0.3 * p, 0, 0)
-    set(6, -0.45 * p, 0.2, -0.5)
-  } else if (u.state === "hit") {
-    set(2, -0.45, 0, 0)
-    set(3, -0.25, 0, 0)
-    set(6, 0.6, 0, -0.4)
-  } else if (u.state === "dead") {
-    const p = Math.min(1, k / 0.5)
-    set(1, p * 1.45, 0, 0)
-    set(9, -0.4 * p, 0, 0)
-    set(10, 0.5 * p, 0, 0)
-    set(6, 0.8 * p, 0, 0)
-  } else {
-    const w = Math.sin(time * 2 + u.seed)
-    set(2, w * 0.04, 0, 0)
-    set(5, 0.15, 0, 0.22)
-    set(6, 0.2, 0, -0.28)
-  }
+function setClip(u: Fighter, pose: Pose) {
+  const names = clipNames(u, pose)
+  const name = names.find((n) => u.actions.has(n)) ?? [...u.actions.keys()][0]
+  if (!name || u.playing === name) return
+  const next = u.actions.get(name)
+  if (!next) return
+  const once = pose === "dead" || pose === "attack" || pose === "shoot" || pose === "hit"
+  next.reset()
+  next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity)
+  next.clampWhenFinished = pose === "dead"
+  next.fadeIn(0.1).play()
+  const prev = u.actions.get(u.playing)
+  prev?.fadeOut(0.1)
+  u.playing = name
 }
 
-function writeBones(u: Unit, world: THREE.Matrix4[]) {
-  const yaw = u.side === "atk" ? -Math.PI / 2 : Math.PI / 2
-  _e.set(0, yaw, u.state === "dead" ? Math.min(1, u.stateT) * (u.side === "atk" ? 0.4 : -0.4) : 0)
-  _q.setFromEuler(_e)
-  _v.set(u.x, u.state === "dead" ? Math.max(0.05, 0.2 - u.stateT * 0.15) : u.y, u.z)
-  _s.set(u.scale, u.scale, u.scale)
-  world[0].compose(_v, _q, _s)
-  for (let b = 1; b < BONES; b++) {
-    _e.set(u.rot[b * 3], u.rot[b * 3 + 1], u.rot[b * 3 + 2])
-    _q.setFromEuler(_e)
-    _v.set(REST[b][0], REST[b][1], REST[b][2])
-    _m.compose(_v, _q, _one)
-    world[b].multiplyMatrices(world[PARENT[b]], _m)
-  }
+function clipNames(u: Fighter, pose: Pose): string[] {
+  const grog = u.actions.has("Run")
+  if (pose === "dead") return grog ? ["Death"] : ["Death_A", "Death_B"]
+  if (pose === "hit") return grog ? ["HitReact"] : ["Hit_A", "Hit_B", "Block_Hit"]
+  if (pose === "shoot") return grog ? ["Punch", "Weapon"] : ["1H_Ranged_Shoot", "2H_Ranged_Shoot", "Throw"]
+  if (pose === "attack") return grog ? ["Weapon", "Punch"] : ["1H_Melee_Attack_Chop", "2H_Melee_Attack_Chop"]
+  if (pose === "run") return grog ? ["Run", "Walk"] : ["Running_A", "Walking_A"]
+  return grog ? ["Idle", "Walk"] : ["Idle", "2H_Melee_Idle", "Unarmed_Idle"]
 }
 
-function writePart(part: Part, u: Unit, index: number, world: THREE.Matrix4[]) {
-  if (!part.show(u)) {
-    _o.makeScale(0.0001, 0.0001, 0.0001)
-    part.mesh.setMatrixAt(index, _o)
-    return
-  }
-  _e.set(part.rx, part.ry, part.rz)
-  _q.setFromEuler(_e)
-  _v.set(part.ox, part.oy, part.oz)
-  _s.set(part.sx, part.sy, part.sz)
-  _m.compose(_v, _q, _s)
-  _o.multiplyMatrices(world[part.bone], _m)
-  part.mesh.setMatrixAt(index, _o)
+function prepare(root: THREE.Group, height: number, grog: boolean) {
+  root.traverse((obj) => {
+    obj.frustumCulled = false
+    const mesh = obj as THREE.Mesh
+    if (!mesh.isMesh) return
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => m.clone()) : mesh.material.clone()
+  })
+  const box = new THREE.Box3().setFromObject(root)
+  const size = box.getSize(new THREE.Vector3())
+  const scale = height / Math.max(0.001, size.y)
+  root.scale.setScalar(scale)
+  const fitted = new THREE.Box3().setFromObject(root)
+  root.position.y -= fitted.min.y
+  if (!grog) return
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Bone)) return
+    if (!/head/i.test(obj.name)) return
+    const hornMat = new THREE.MeshStandardMaterial({ color: 0x3a3228, roughness: 0.55, metalness: 0.25 })
+    const left = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.28, 6), hornMat)
+    const right = left.clone()
+    left.position.set(-0.12, 0.16, 0.02)
+    right.position.set(0.12, 0.16, 0.02)
+    left.rotation.z = 0.5
+    right.rotation.z = -0.5
+    left.castShadow = true
+    right.castShadow = true
+    obj.add(left, right)
+  })
 }
 
-function makeParts(count: number): Part[] {
-  const skin = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62 })
-  const leather = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.78 })
-  const metal = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.72, roughness: 0.34 })
-  const fur = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 })
-  const cloth = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86 })
-  const wood = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 })
-  const geo = {
-    torso: new THREE.CapsuleGeometry(0.2, 0.34, 4, 8),
-    hips: new THREE.CylinderGeometry(0.16, 0.22, 0.28, 8),
-    head: new THREE.SphereGeometry(0.16, 10, 8),
-    hair: new THREE.SphereGeometry(0.17, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2),
-    beard: new THREE.ConeGeometry(0.09, 0.22, 6),
-    braid: new THREE.CylinderGeometry(0.025, 0.035, 0.28, 5),
-    paint: new THREE.BoxGeometry(0.045, 0.12, 0.02),
-    helm: new THREE.SphereGeometry(0.17, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2.2),
-    horn: new THREE.ConeGeometry(0.045, 0.28, 5),
-    cloak: new THREE.BoxGeometry(0.46, 0.55, 0.08),
-    arm: new THREE.CapsuleGeometry(0.06, 0.22, 3, 6),
-    leg: new THREE.CapsuleGeometry(0.07, 0.26, 3, 6),
-    boot: new THREE.BoxGeometry(0.12, 0.1, 0.2),
-    shield: new THREE.CylinderGeometry(0.22, 0.22, 0.05, 12),
-    haft: new THREE.CylinderGeometry(0.025, 0.03, 0.55, 5),
-    blade: new THREE.BoxGeometry(0.18, 0.22, 0.04),
-    sword: new THREE.BoxGeometry(0.06, 0.5, 0.02),
-    bow: new THREE.TorusGeometry(0.18, 0.018, 5, 10, Math.PI),
-    mount: new THREE.CapsuleGeometry(0.22, 0.55, 4, 8),
-    base: new THREE.CylinderGeometry(0.42, 0.46, 0.06, 12),
-  }
-  const inst = (g: THREE.BufferGeometry, m: THREE.Material) => {
-    const mesh = new THREE.InstancedMesh(g, m, count)
-    mesh.frustumCulled = false
-    mesh.castShadow = true
-    return mesh
-  }
-  const P = (
-    mesh: THREE.InstancedMesh, bone: number,
-    ox: number, oy: number, oz: number, sx: number, sy: number, sz: number,
-    color: (u: Unit) => number, show: (u: Unit) => boolean,
-  ): Part => ({ mesh, bone, ox, oy, oz, rx: 0, ry: 0, rz: 0, sx, sy, sz, color, show })
-  const parts: Part[] = [
-    P(inst(geo.base, metal), 0, 0, 0.03, 0, 1, 1, 1, (u) => u.side === "atk" ? 0xc9a15a : 0x8a3a28, () => true),
-    P(inst(geo.hips, cloth), 1, 0, 0, 0, 1, 1, 1, (u) => u.cloth, () => true),
-    P(inst(geo.torso, leather), 3, 0, -0.02, 0, 1, 1.05, 1, (u) => u.leather, () => true),
-    P(inst(geo.torso, metal), 3, 0, 0.02, -0.04, 0.72, 0.55, 0.55, (u) => u.metal, () => true),
-    P(inst(geo.head, skin), 4, 0, 0, 0, 1, 1, 1, (u) => u.skin, () => true),
-    P(inst(geo.hair, fur), 4, 0, 0.06, 0.02, 1, 0.7, 1, (u) => u.hair, () => true),
-    P(inst(geo.beard, fur), 4, 0, -0.1, -0.08, 1, 1, 0.7, (u) => u.hair, (u) => u.beard),
-    P(inst(geo.braid, fur), 4, -0.1, -0.08, -0.02, 1, 1, 1, (u) => u.hair, (u) => u.faction === "viking"),
-    P(inst(geo.braid, fur), 4, 0.1, -0.08, -0.02, 1, 1, 1, (u) => u.hair, (u) => u.faction === "viking"),
-    P(inst(geo.paint, skin), 4, -0.05, 0.02, -0.15, 1, 1, 1, () => 0x14161c, (u) => u.faction === "viking"),
-    P(inst(geo.paint, skin), 4, 0.05, 0.02, -0.15, 1, 1, 1, () => 0x14161c, (u) => u.faction === "viking"),
-    P(inst(geo.helm, metal), 4, 0, 0.05, 0, 1, 0.85, 1, (u) => u.metal, () => true),
-    P(inst(geo.horn, metal), 4, -0.1, 0.16, 0, 1, 1, 1, (u) => u.metal, (u) => u.horns),
-    P(inst(geo.horn, metal), 4, 0.1, 0.16, 0, 1, 1, 1, (u) => u.metal, (u) => u.horns),
-    P(inst(geo.horn, skin), 4, -0.06, -0.02, -0.14, 0.6, 0.45, 1, (u) => u.skin, (u) => u.tusks),
-    P(inst(geo.horn, skin), 4, 0.06, -0.02, -0.14, 0.6, 0.45, 1, (u) => u.skin, (u) => u.tusks),
-    P(inst(geo.cloak, fur), 3, 0, -0.05, 0.2, 1, 1, 1, (u) => u.fur, () => true),
-    P(inst(geo.arm, skin), 5, 0, -0.14, 0, 1, 1, 1, (u) => u.skin, () => true),
-    P(inst(geo.arm, skin), 6, 0, -0.14, 0, 1, 1, 1, (u) => u.skin, () => true),
-    P(inst(geo.arm, leather), 7, 0, -0.12, 0, 0.9, 0.9, 0.9, (u) => u.leather, () => true),
-    P(inst(geo.arm, leather), 8, 0, -0.12, 0, 0.9, 0.9, 0.9, (u) => u.leather, () => true),
-    P(inst(geo.shield, wood), 7, 0.02, -0.05, -0.16, 1, 0.35, 1, (u) => u.cloth, (u) => u.weapon !== "bow" && u.cls !== "monster"),
-    P(inst(geo.haft, wood), 8, 0, -0.28, -0.02, 1, 1, 1, () => 0x6b4228, (u) => u.weapon === "axe" || u.weapon === "maul"),
-    P(inst(geo.blade, metal), 8, 0.1, -0.48, 0, 1, 1, 1, (u) => u.metal, (u) => u.weapon === "axe" || u.weapon === "maul"),
-    P(inst(geo.sword, metal), 8, 0, -0.42, -0.02, 1, 1, 1, (u) => u.metal, (u) => u.weapon === "sword"),
-    P(inst(geo.bow, wood), 7, 0, -0.05, -0.12, 1, 1, 1, () => 0x6b4228, (u) => u.weapon === "bow"),
-    P(inst(geo.leg, leather), 9, 0, -0.16, 0, 1, 1, 1, (u) => u.leather, () => true),
-    P(inst(geo.leg, leather), 10, 0, -0.16, 0, 1, 1, 1, (u) => u.leather, () => true),
-    P(inst(geo.leg, leather), 11, 0, -0.14, 0, 0.85, 0.85, 0.85, (u) => u.leather, () => true),
-    P(inst(geo.leg, leather), 12, 0, -0.14, 0, 0.85, 0.85, 0.85, (u) => u.leather, () => true),
-    P(inst(geo.boot, leather), 11, 0, -0.28, -0.04, 1, 1, 1, (u) => u.leather, () => true),
-    P(inst(geo.boot, leather), 12, 0, -0.28, -0.04, 1, 1, 1, (u) => u.leather, () => true),
-    P(inst(geo.mount, leather), 0, 0, 0.45, 0.15, 1.3, 0.85, 0.9, (u) => u.mount === "boar" ? u.skin : u.leather, (u) => u.mount !== "none"),
-  ]
-  parts[6].rx = Math.PI
-  parts[12].rz = 0.55
-  parts[13].rz = -0.55
-  parts[21].rx = Math.PI / 2
-  parts[32].rx = Math.PI / 2
-  return parts
+function buildRoster(battle: BattleResult, cap: number) {
+  return [...expand(battle, "atk", battle.attackerFaction, cap), ...expand(battle, "def", battle.defenderFaction === "grog" ? "grog" : "viking", cap)]
 }
 
-function paintColors(parts: Part[], units: Unit[]) {
-  for (const part of parts) {
-    for (let i = 0; i < units.length; i++) {
-      _c.setHex(part.color(units[i]))
-      part.mesh.setColorAt(i, _c)
-    }
-    if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true
-  }
-}
-
-function buildRoster(battle: BattleResult, cap: number): Unit[] {
-  const atk = expand(battle, "atk", battle.attackerFaction, cap)
-  const defFaction: Faction = battle.defenderFaction === "grog" ? "grog" : "viking"
-  const def = expand(battle, "def", defFaction, cap)
-  return [...atk, ...def]
-}
-
-function expand(battle: BattleResult, side: "atk" | "def", faction: Faction, cap: number): Unit[] {
+function expand(battle: BattleResult, side: "atk" | "def", faction: Faction, cap: number) {
   const units = side === "atk" ? battle.attackerUnits : battle.defenderUnits
   const champs = side === "atk" ? battle.attackerChamps : battle.defenderChamps
-  const out: Unit[] = []
-  const push = (name: string, cls: UnitClass, art: string | null, id: string | null, hero: boolean, slot: number) => {
-    const look = lookOf(id, faction, cls, art)
-    const cols = 5
-    const row = Math.floor(slot / cols)
-    const col = (slot % cols) - (cols - 1) / 2
+  const out: { id: string; name: string; side: "atk" | "def"; cls: UnitClass; faction: Faction; hero: boolean; hp: number; x: number; z: number }[] = []
+  const push = (name: string, cls: UnitClass, hero: boolean, slot: number) => {
+    const col = slot % 3
+    const row = Math.floor(slot / 3)
     const dir = side === "atk" ? 1 : -1
     out.push({
       id: `${side}-${slot}-${name}`,
@@ -739,198 +557,75 @@ function expand(battle: BattleResult, side: "atk" | "def", faction: Faction, cap
       side,
       cls,
       faction,
-      art,
       hero,
-      hp: hero ? 34 : cls === "monster" ? 28 : cls === "archer" ? 12 : 16,
-      max: hero ? 34 : cls === "monster" ? 28 : cls === "archer" ? 12 : 16,
-      alive: true,
-      x: (side === "atk" ? -2.5 : 2.5) - dir * row * 0.7,
-      y: 0,
-      z: col * 0.78,
-      scale: look.scale,
-      state: "run",
-      stateT: Math.random(),
-      seed: Math.random() * 6,
-      rot: new Float32Array(BONES * 3),
-      weapon: look.weapon,
-      beard: look.beard,
-      horns: look.horns,
-      tusks: look.tusks,
-      mount: cls === "cavalry" ? (faction === "grog" ? "boar" : "horse") : "none",
-      guard: 0,
-      boost: 1,
-      skin: look.skin,
-      hair: look.hair,
-      leather: look.leather,
-      metal: look.metal,
-      cloth: look.cloth,
-      fur: look.fur,
-      flash: 0,
+      hp: hero ? 36 : cls === "monster" ? 30 : 16,
+      x: (side === "atk" ? -1.45 : 1.45) - dir * row * 0.7,
+      z: (col - 1) * 0.78,
     })
   }
-  champs.slice(0, 4).forEach((c, i) => {
+  champs.slice(0, 2).forEach((c, i) => {
     const def = championById(c.id)
-    const cls = def ? championClass(def) : "infantry"
-    push(c.name, cls, c.art, c.id, true, i)
+    push(c.name, def ? championClass(def) : "infantry", true, i)
   })
-  const pool = units.length ? units : [{ name: side === "atk" ? "Huscarls" : "Levy", cls: "infantry" }]
+  const pool = units.length ? units : [{ name: side === "atk" ? "Huscarl" : "Levy", cls: "infantry" }]
   let n = 0
   while (out.length < cap) {
     const src = pool[n % pool.length]
     const cls = (["infantry", "archer", "cavalry", "monster"] as string[]).includes(src.cls) ? src.cls as UnitClass : "infantry"
-    push(src.name, cls, champs[0]?.art ?? null, null, false, out.length)
+    push(src.name, faction === "grog" && cls === "infantry" ? "monster" : cls, false, out.length)
     n++
   }
   return out
 }
 
-function lookOf(id: string | null, faction: Faction, cls: UnitClass, _art: string | null) {
-  const grog = faction === "grog"
-  const known: Record<string, Partial<ReturnType<typeof blankLook>>> = {
-    ryan: { hair: 0xd7b15a, beard: true, leather: 0x6b3a28, fur: 0xc4a574, metal: 0xb7c0c8, cloth: 0x7a2a24, weapon: "axe" },
-    ralph: { hair: 0xc8c4bc, beard: true, leather: 0x5a4034, weapon: "axe" },
-    billy: { hair: 0x8a3a22, beard: true, cloth: 0x8a1e16, weapon: "axe" },
-    gavin: { hair: 0x4a3428, beard: true, metal: 0xd0d6dc, weapon: "sword" },
-    haydin: { hair: 0x6a4a28, beard: true, weapon: "bow", leather: 0x6d5a32 },
-    lana: { hair: 0xc4562a, beard: false, weapon: "bow" },
-    emma: { hair: 0xe6d2a4, beard: false, metal: 0xe2c07a, weapon: "sword" },
-    donna: { hair: 0xeee6dc, beard: false, cloth: 0x3a4a6a, weapon: "bow" },
-    kali: { hair: 0x2a2118, beard: false, metal: 0x9aa4ae },
-    anna: { hair: 0xc48a4a, beard: false, cloth: 0xf2efe6 },
-    gorgrath: { skin: 0x5f7a38, hair: 0x1a120c, horns: true, tusks: true, beard: true, weapon: "axe", metal: 0x6a6560 },
-    urzog: { skin: 0x4e6a32, horns: true, tusks: true, weapon: "maul", scale: 1.45 },
-    zug: { skin: 0x6a8a40, horns: true, tusks: true, weapon: "axe" },
-    sharga: { skin: 0x567038, horns: true, beard: false, weapon: "bow" },
-    brakka: { skin: 0x4a6230, horns: true, tusks: true, metal: 0x8a9094, scale: 1.25 },
-  }
-  const base = blankLook(grog, cls)
-  const extra = id && known[id] ? known[id] : {}
-  return { ...base, ...extra }
-}
-
-function blankLook(grog: boolean, cls: UnitClass) {
-  return {
-    skin: grog ? 0x5d7a3a : 0xc49a78,
-    hair: grog ? 0x24180f : 0x6a4a2a,
-    leather: grog ? 0x4a3424 : 0x6b4228,
-    metal: grog ? 0x7a756e : 0x9aa6b0,
-    cloth: grog ? 0x6a2420 : 0x7d2e2a,
-    fur: grog ? 0x3a2c22 : 0xb08958,
-    beard: !grog && cls !== "archer",
-    horns: grog,
-    tusks: grog && cls !== "archer",
-    weapon: (cls === "archer" ? "bow" : cls === "monster" ? "maul" : cls === "cavalry" ? "sword" : "axe") as Weapon,
-    scale: cls === "monster" ? 1.4 : grog ? 1.12 : 1,
-  }
-}
-
-function fieldTexture() {
+function boardTexture() {
   const canvas = document.createElement("canvas")
   canvas.width = 512
   canvas.height = 512
   const g = canvas.getContext("2d")
   if (!g) return new THREE.CanvasTexture(canvas)
-  g.fillStyle = "#3d4a32"
+  g.fillStyle = "#3e4a32"
   g.fillRect(0, 0, 512, 512)
-  for (let i = 0; i < 7000; i++) {
-    g.fillStyle = i % 3 === 0 ? "#2a2418" : i % 3 === 1 ? "#4a3828" : "#5a4632"
-    g.fillRect(Math.random() * 512, Math.random() * 512, 3, 2)
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      g.fillStyle = (x + y) % 2 === 0 ? "#4a5638" : "#3a3424"
+      g.fillRect(x * 64, y * 64, 64, 64)
+      g.strokeStyle = "rgba(20,14,8,0.45)"
+      g.strokeRect(x * 64 + 0.5, y * 64 + 0.5, 63, 63)
+    }
   }
-  g.fillStyle = "#2c2418"
-  g.beginPath()
-  g.ellipse(256, 270, 160, 120, 0, 0, Math.PI * 2)
-  g.fill()
-  g.fillStyle = "#6a3018"
-  g.globalAlpha = 0.35
-  g.beginPath()
-  g.ellipse(180, 340, 70, 28, 0.4, 0, Math.PI * 2)
-  g.fill()
-  g.globalAlpha = 1
+  g.fillStyle = "#5a4632"
+  g.fillRect(160, 180, 192, 160)
+  g.fillStyle = "#6a5040"
+  for (let i = 0; i < 40; i++) g.fillRect(170 + (i % 8) * 22, 190 + Math.floor(i / 8) * 28, 16, 16)
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
   return tex
 }
 
-function dressField(scene: THREE.Scene, low: boolean, grogCamp: boolean) {
+function dressBoard(scene: THREE.Scene, grogCamp: boolean) {
   const wood = new THREE.MeshStandardMaterial({ color: 0x4a3424, roughness: 0.9 })
-  const stone = new THREE.MeshStandardMaterial({ color: 0x6a645c, roughness: 0.92 })
-  const leaf = new THREE.MeshStandardMaterial({ color: 0x24301c, roughness: 1 })
+  const stone = new THREE.MeshStandardMaterial({ color: 0x6e6860, roughness: 0.85 })
   const thatch = new THREE.MeshStandardMaterial({ color: grogCamp ? 0x3a2a18 : 0x6a4a28, roughness: 1 })
-  const hide = new THREE.MeshStandardMaterial({ color: grogCamp ? 0x2a2218 : 0x5a4030, roughness: 0.95 })
-  const logs = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.08, 0.1, 1.5, 5), wood, 28)
-  const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.45, 0), stone, 10)
-  const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.12, 0.16, 1.1, 5), wood, 8)
-  const crowns = new THREE.InstancedMesh(new THREE.ConeGeometry(0.7, 1.6, 6), leaf, 8)
-  ;[logs, rocks, trunks, crowns].forEach((m) => { m.castShadow = !low; m.receiveShadow = !low; scene.add(m) })
-  for (let i = 0; i < 28; i++) {
-    const a = (i / 28) * Math.PI * 2
-    _v.set(Math.cos(a) * 8.2, 0.75, Math.sin(a) * 6.2)
-    _q.setFromEuler(_e.set(0, a, 0))
-    _m.compose(_v, _q, _one)
-    logs.setMatrixAt(i, _m)
-  }
-  const rockPos = [[-3.2, 0.3, -2.4], [2.6, 0.35, -1.8], [0.4, 0.25, 2.8], [-1.5, 0.2, 2.2], [3.4, 0.3, 1.6]]
-  rockPos.forEach((p, i) => {
-    _v.set(p[0], p[1], p[2])
-    _m.compose(_v, _q.identity(), _s.set(1, 0.8, 1))
-    rocks.setMatrixAt(i, _m)
-  })
-  const trees = [[-6, -3], [6.2, -2.4], [-5.5, 3.2], [5.4, 3.4], [-2, -4.5], [2.2, -4.6]]
-  trees.forEach((p, i) => {
-    _v.set(p[0], 0.55, p[1])
-    _m.compose(_v, _q.identity(), _one)
-    trunks.setMatrixAt(i, _m)
-    _v.set(p[0], 1.7, p[1])
-    _m.compose(_v, _q.identity(), _one)
-    crowns.setMatrixAt(i, _m)
-  })
-  const ruin = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.2, 0.4), stone)
-  ruin.position.set(-0.8, 1.1, -3.6)
-  const ruin2 = ruin.clone()
-  ruin2.position.x = 0.8
-  const lintel = new THREE.Mesh(new THREE.BoxGeometry(2, 0.28, 0.4), stone)
-  lintel.position.set(0, 2.2, -3.6)
-  scene.add(ruin, ruin2, lintel)
-  logs.instanceMatrix.needsUpdate = true
-  rocks.instanceMatrix.needsUpdate = true
-  trunks.instanceMatrix.needsUpdate = true
-  crowns.instanceMatrix.needsUpdate = true
-
-  const hall = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.1, 1.4), hide)
-  hall.position.set(grogCamp ? 4.2 : -4.4, 0.55, -1.2)
-  hall.castShadow = !low
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.7, 0.9, 4), thatch)
-  roof.position.set(hall.position.x, 1.35, hall.position.z)
+  const hall = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 1), wood)
+  hall.position.set(grogCamp ? 3.2 : -3.3, 0.4, -2.2)
+  hall.castShadow = true
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.15, 0.55, 4), thatch)
+  roof.position.set(hall.position.x, 0.95, hall.position.z)
   roof.rotation.y = Math.PI / 4
-  const door = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 0.08), wood)
-  door.position.set(hall.position.x, 0.35, hall.position.z + (grogCamp ? -0.72 : 0.72))
-  scene.add(hall, roof, door)
-  const stakes = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.04, 0.05, 0.9, 4), wood, 8)
-  for (let i = 0; i < 8; i++) {
-    _v.set(hall.position.x - 1.3 + i * 0.38, 0.45, hall.position.z + 1.1)
-    _m.compose(_v, _q.identity(), _one)
-    stakes.setMatrixAt(i, _m)
-  }
-  stakes.instanceMatrix.needsUpdate = true
-  scene.add(stakes)
-  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.45, 6), new THREE.MeshBasicMaterial({ color: 0xff5a18 }))
-  flame.position.set(0.2, 0.35, 1.8)
-  const flame2 = flame.clone()
-  flame2.position.set(-2.2, 0.4, -0.4)
-  scene.add(flame, flame2)
-}
-
-function poolNumbers(scene: THREE.Scene, count: number) {
-  return Array.from({ length: count }, () => {
-    const canvas = document.createElement("canvas")
-    canvas.width = 128
-    canvas.height = 64
-    const ctx = canvas.getContext("2d")!
-    const tex = new THREE.CanvasTexture(canvas)
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }))
-    sprite.visible = false
-    sprite.scale.set(0.8, 0.4, 1)
-    scene.add(sprite)
-    return { sprite, tex, ctx, life: 0 }
-  })
+  scene.add(hall, roof)
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.38, 6), new THREE.MeshBasicMaterial({ color: 0xff5a18 }))
+  flame.position.set(0.15, 0.28, 1.55)
+  const ember = flame.clone()
+  ember.position.set(-1.4, 0.32, -0.2)
+  scene.add(flame, ember)
+  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.28, 0), stone)
+  rock.position.set(1.8, 0.16, 1.3)
+  rock.castShadow = true
+  scene.add(rock)
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.7, 6), wood)
+  trunk.position.set(-2.4, 0.35, 1.6)
+  const crown = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.8, 6), new THREE.MeshStandardMaterial({ color: 0x243018, roughness: 1 }))
+  crown.position.set(-2.4, 0.95, 1.6)
+  scene.add(trunk, crown)
 }

@@ -129,9 +129,10 @@ export function WarMap({
     map.easeTo({
       center: [pos.lng, pos.lat],
       bearing: pos.heading,
-      pitch: moving ? 46 : 0,
+      zoom: moving ? 15.5 : 13.4,
+      pitch: moving ? 50 : 0,
       duration: reduce ? 0 : 700,
-      padding: { top: 80, bottom: 240, left: 20, right: 20 },
+      padding: { top: 72, bottom: 150, left: 16, right: 16 },
     })
   }, [pos, follow, moving, booted])
 
@@ -158,35 +159,57 @@ export function WarMap({
       marks.current.set(id, new maplibregl.Marker({ element: node, anchor }).setLngLat([lng, lat]).addTo(map))
     }
 
+    const zoom = map.getZoom()
+    const cell = zoom > 15.2 ? 0.00045 : zoom > 14 ? 0.0011 : 0.0022
     const shown = new Set(world.towns.map((t) => t.id))
-    for (const town of [...world.towns, ...places.filter((t) => !shown.has(t.id))]) {
-      const faction = town.ownerFaction ?? "neutral"
-      const mine = town.ownerId === you.id
-      const node = nodeOf(`<div class="pin ${faction} ${mine ? "mine" : ""}" data-sig="${faction}:${mine}:${town.name}"><div class="label">${escapeHtml(town.name)}</div><div class="dot"></div></div>`)
-      node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onTown(town.id) })
-      put(`town:${town.id}`, town.lng, town.lat, node, "bottom")
+    const towns = [...world.towns, ...places.filter((t) => !shown.has(t.id))]
+    for (const [key, list] of groupBy(towns, (t) => bucket(t.lng, t.lat, cell))) {
+      const town = list[0]
+      if (list.length === 1) {
+        const faction = town.ownerFaction ?? "neutral"
+        const mine = town.ownerId === you.id
+        const node = nodeOf(`<div class="pin ${faction} ${mine ? "mine" : ""}" data-sig="${faction}:${mine}:${town.name}"><div class="label">${escapeHtml(town.name)}</div><div class="dot"></div></div>`)
+        node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onTown(town.id) })
+        put(`town:${town.id}`, town.lng, town.lat, node, "bottom")
+      } else {
+        const node = nodeOf(`<div class="pin cluster" data-sig="towns:${list.length}:${key}"><div class="dot"></div><div class="label">${list.length}</div></div>`)
+        node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onTown(town.id) })
+        put(`towns:${key}`, town.lng, town.lat, node, "bottom")
+      }
     }
-    for (const report of world.reports) {
+    for (const [key, list] of groupBy(world.reports, (r) => bucket(r.lng, r.lat, cell))) {
+      const report = list[0]
       const info = REPORT_INFO[report.type]
-      const node = nodeOf(`<div class="pin report ${report.type}" title="${escapeHtml(info.title)}. ${escapeHtml(info.label)}" data-sig="${report.type}:${report.still.length}:${report.gone.length}"><img class="mark" alt="${escapeHtml(info.title)}, ${escapeHtml(info.label)}" src="${asset(info.icon)}" /><div class="label">${escapeHtml(info.label)}</div></div>`)
+      const count = list.length > 1 ? `<b class="count">${list.length}</b>` : ""
+      const node = nodeOf(`<div class="pin report ${report.type}" title="${escapeHtml(info.title)}. ${escapeHtml(info.label)}" data-sig="${report.type}:${list.length}"><img class="mark" alt="${escapeHtml(info.title)}, ${escapeHtml(info.label)}" src="${asset(info.icon)}" />${count}</div>`)
       node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onReport(report.id) })
-      put(`report:${report.id}`, report.lng, report.lat, node, "bottom")
+      put(`report:${key}`, report.lng, report.lat, node, "bottom")
     }
     for (const post of TRADING_POSTS) {
       const node = nodeOf(`<div class="pin post-mark" data-sig="${post.id}"><div class="label"><b>${escapeHtml(post.title)}</b><small>Mead hall · Gas station</small></div><img class="mark" alt="" src="${asset("marks/tavern.svg")}" /></div>`)
       node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onPost(post.id) })
       put(`post:${post.id}`, post.lng, post.lat, node, "bottom")
     }
-    for (const p of world.players) {
-      if (!p.faction) continue
+    const others = world.players.filter((p) => p.faction)
+    for (const [key, list] of groupBy(others, (p) => bucket(p.homeLng, p.homeLat, cell))) {
+      const p = list[0]
       const friend = you.friendIds.includes(p.id)
-      const sig = `${p.faction}:${p.villageName}:${p.hall}:${friend ? "f" : ""}`
-      const node = nodeOf(`<div class="hall-mark ${friend ? "friend" : ""} ${p.faction}" data-sig="${sig}"><img alt="" src="${asset(p.leaderArt || (p.faction === "grog" ? "scenes/orc-brute.webp" : "scenes/wolves.jpg"))}" /><div class="label">${escapeHtml(p.villageName)}</div></div>`)
-      node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onHall(p.id) })
-      put(`hall:${p.id}`, p.homeLng, p.homeLat, node, "bottom")
+      if (list.length === 1) {
+        const sig = `${p.faction}:${p.villageName}:${p.hall}:${friend ? "f" : ""}`
+        const node = nodeOf(`<div class="hall-mark ${friend ? "friend" : ""} ${p.faction}" data-sig="${sig}"><img alt="" src="${asset(p.leaderArt || (p.faction === "grog" ? "scenes/orc-brute.webp" : "scenes/wolves.jpg"))}" /><div class="label">${escapeHtml(p.villageName)}</div></div>`)
+        node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onHall(p.id) })
+        put(`hall:${p.id}`, p.homeLng, p.homeLat, node, "bottom")
+      } else {
+        const node = nodeOf(`<div class="hall-mark cluster" data-sig="halls:${list.length}:${key}"><div class="dot"></div><div class="label">${list.length}</div></div>`)
+        node.addEventListener("click", () => { if (!cb.current.locked) cb.current.onHall(p.id) })
+        put(`halls:${key}`, p.homeLng, p.homeLat, node, "bottom")
+      }
+    }
+    for (const p of others) {
       if (p.id === you.id) continue
       const away = haversine({ lat: p.lat, lng: p.lng }, { lat: p.homeLat, lng: p.homeLng })
       if (away > 80 || p.speed > 3) {
+        const friend = you.friendIds.includes(p.id)
         const ride = riderHtml(p.faction ?? "viking", p.leaderArt, p.name, p.heading, p.speed, friend, `ride-${p.id}`)
         put(`ride:${p.id}`, p.lng, p.lat, ride, "center")
       }
@@ -233,6 +256,21 @@ export function WarMap({
   }, [world, places, you.id, you.friendIds, you.faction, booted, pos.lat, pos.lng, pos.heading, speed])
 
   return <div className={`map-wrap ${moving ? "map-drive" : ""}`}><div ref={host} className="map" /></div>
+}
+
+function bucket(lng: number, lat: number, cell: number) {
+  return `${Math.floor(lng / cell)}:${Math.floor(lat / cell)}`
+}
+
+function groupBy<T>(items: T[], key: (item: T) => string) {
+  const groups = new Map<string, T[]>()
+  for (const item of items) {
+    const id = key(item)
+    const list = groups.get(id) ?? []
+    list.push(item)
+    groups.set(id, list)
+  }
+  return groups
 }
 
 function spin(map: maplibregl.Map) {

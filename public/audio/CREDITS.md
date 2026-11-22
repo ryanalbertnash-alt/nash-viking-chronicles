@@ -27,7 +27,12 @@ Each of the 24 champions has five lines: recruit, battle cry, victory, defeat, a
 
 ## Battle figures
 
-The fighters in a siege are original low-poly figures made for this game. Each one is a rigged body: head, helm, beard or tusks, fur cloak, mail, shield, and a weapon. Colors follow that champion's painting. They are not taken from another game. The grass, rocks, trees, and palisade on the field are original too.
+The fighters are rigged CC0 character models, loaded as glTF and played with skeletal clips (idle, run, attack, shoot, hit, death).
+
+- Vikings: KayKit Character Pack: Adventurers, Barbarian, by Kay Lousberg. CC0. The model includes the beard, axe, and round shield. https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0
+- Grogs: Quaternius Orc, CC0, from the Ultimate Monsters pack. https://quaternius.com and https://poly.pizza/m/5vO2YJsPEf
+
+Champion portraits stay in the battle header. They are not stuck on the figures. The board, fire, and the longhouse or camp are original.
 
 ## Sound effects
 

@@ -66,6 +66,7 @@ function Board({
   const [roadLimit, setRoadLimit] = useState<number | null>(null)
   const [roadAlert, setRoadAlert] = useState("")
   const [roadNote, setRoadNote] = useState("")
+  const [marksOpen, setMarksOpen] = useState(false)
   const roadLimitRef = useRef<number | null>(null)
   roadLimitRef.current = roadLimit
   const navRef = useRef<NavPlan | null>(null)
@@ -612,7 +613,16 @@ function Board({
         onPost={(id) => setSheet({ kind: "post", id })}
         onFree={() => setFollow(false)}
       />
-      <div className="hud">
+      <div className={`hud ${locked ? "driving" : ""}`}>
+        {locked ? (
+          <div className="topbar slim-drive">
+            {link !== "live" && <div className="banner link-down">Reconnecting to the saga.</div>}
+            <div className="banner drive-turn">
+              <b>{roadAlert || roadNote || (townBanner ? `${townBanner.kind} · ${townBanner.name}` : nextTurn?.say ?? "On the road")}</b>
+              {!roadAlert && !roadNote && <span>{townBanner ? ` · ${formatMeters(townBanner.ahead)}` : nextTurn ? ` · ${formatMeters(Math.max(0, nextTurn.at - (along?.along ?? 0)))}` : ""}</span>}
+            </div>
+          </div>
+        ) : (
         <div className="topbar">
           <div className="top-row">
             <div className="who">
@@ -651,7 +661,7 @@ function Board({
             </div>
           </div>
           {link !== "live" && <div className="banner link-down">Reconnecting to the saga.</div>}
-          <form className="dest-search" onSubmit={(e) => {
+          {!nav && <form className="dest-search" onSubmit={(e) => {
             e.preventDefault()
             void fetch(apiUrl(`/api/geocode?q=${encodeURIComponent(query)}`)).then((r) => r.json()).then((rows) => {
               const list = (rows as { name: string; lat: number; lng: number }[]).slice(0, 4)
@@ -662,7 +672,10 @@ function Board({
           }}>
             <input aria-label="Destination" placeholder="Where to?" value={query} onChange={(e) => setQuery(e.target.value)} />
             <Button type="submit" size="sm">Go</Button>
-          </form>
+          </form>}
+          {nav && (
+            <button type="button" className="change-dest" onClick={() => { setNav(null); setHits([]) }}>Change destination</button>
+          )}
           {hits.length > 1 && (
             <div className="dest-hits">
               {hits.map((hit) => (
@@ -679,18 +692,18 @@ function Board({
           {roadAlert && <div className="banner slim">{roadAlert}</div>}
           {roadNote && <div className="banner slim">{roadNote}</div>}
           {townBanner && <div className="banner slim">{townBanner.kind} · {townBanner.name} · {formatMeters(townBanner.ahead)}</div>}
-          {locked && <div className="banner">Adventure. Hands on the wheel.</div>}
           {!locked && you.marches.length > 0 && (
             <div className="banner">
               {you.marches.map((m) => <span key={m.id}>{m.kind} · {m.label} · {Math.max(0, Math.ceil((m.arriveAt - clock) / 1000))}s </span>)}
             </div>
           )}
         </div>
+        )}
 
         <div />
 
         <div className="bottom">
-          {caption && <p className="caption" aria-live="polite">{caption}</p>}
+          {!locked && caption && <p className="caption" aria-live="polite">{caption}</p>}
           {!locked && nearest && haversine(pos, nearest) < 900 && sheet?.kind !== "town" && !battle && (
             <div className="arrival">
               <h2>{nearest.name}</h2>
@@ -710,17 +723,27 @@ function Board({
               <Button onClick={() => send({ t: "do", action: "restock" })}>Restock</Button>
             </div>
           )}
+          {locked && (
+            <div className="eta-row">
+              <b>{eta != null ? `${eta} min` : "—"}</b>
+              <span>{nav?.label ?? "No route"}</span>
+              <Button size="sm" onClick={() => setMarksOpen((open) => !open)}>Report</Button>
+            </div>
+          )}
+          {(!locked || marksOpen) && (
           <div className="report-bar" aria-label="Road reports">
             {DRIVE_REPORTS.map((kind) => (
               <button key={kind} type="button" title={`${REPORT_INFO[kind].title}. ${REPORT_INFO[kind].label}`} onClick={() => {
                 send({ t: "do", action: "report", kind })
                 speak(`${REPORT_INFO[kind].title}. ${REPORT_INFO[kind].label}. Marked.`, true)
+                if (locked) setMarksOpen(false)
               }}>
                 <img alt="" src={asset(REPORT_INFO[kind].icon)} />
                 <small>{REPORT_INFO[kind].label}</small>
               </button>
             ))}
           </div>
+          )}
           <div className="voice-row">
             <button
               className={`voice ${hot ? "hot" : ""}`}
