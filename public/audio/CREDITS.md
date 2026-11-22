@@ -27,9 +27,7 @@ Each of the 24 champions has five lines: recruit, battle cry, victory, defeat, a
 
 ## Battle figures
 
-The fighters are the Quaternius Universal Animation Library mannequin, CC0, adult proportions, with the library's skeletal clips (idle, jog, sword attack, spell shoot, hit, death). Helmets, fur, shields, axes, and Grog horns are simple pieces parented to that rig. https://quaternius.com and https://github.com/J-Ponzo/gltf-universal-animation-library
-
-Champion portraits stay in the battle header. The board, fire, and the longhouse or camp are original.
+The battle is a painted tabletop. Each standee is cut from Ryan Nash's champion paintings (the name plaque removed). Generic troops reuse those cut-outs, smaller and a little darker. The board, fire, and the hall or camp are painted in the same scene.
 
 ## Sound effects
 
