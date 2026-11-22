@@ -175,9 +175,9 @@ img { max-width: 100%; display: block; }
 .starts { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 
 .game { position: relative; height: 100dvh; overflow: hidden; background: #0c0a08; }
-.map-wrap { position: absolute; inset: 0; }
+.map-wrap { position: absolute; inset: 0; z-index: 0; isolation: isolate; }
 .map-wrap .map { position: absolute; inset: 0; }
-.hud { position: absolute; inset: 0; pointer-events: none; z-index: 2; display: flex; flex-direction: column; justify-content: space-between; }
+.hud { position: absolute; inset: 0; pointer-events: none; z-index: 4; display: flex; flex-direction: column; justify-content: space-between; }
 .hud button, .hud a, .hud input, .hud select, .hud label, .hud .panel, .hud .sheet, .hud .arrival { pointer-events: auto; }
 
 .topbar {
@@ -476,7 +476,7 @@ select.arm { width: 100%; min-height: 40px; font-size: 16px; background: #120e0b
 }
 .dialog-card h3 { font-family: Cinzel, Palatino, serif; margin: 0 0 8px; }
 
-.mount-token { display: flex; flex-direction: column; align-items: center; width: 32px; z-index: 5; }
+.mount-token { display: flex; flex-direction: column; align-items: center; width: 32px; z-index: 1; }
 .mount-token .bob { position: relative; width: 32px; height: 24px; }
 .mount-token .beast { width: 32px; height: 20px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
 .mount-token .face { position: absolute; left: 14px; top: 0; width: 9px; height: 9px; border-radius: 50%; object-fit: cover; border: 1px solid var(--gold); }

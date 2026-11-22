@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import * as THREE from "three"
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js"
 import { asset } from "@/art"
@@ -32,8 +33,7 @@ type Fighter = {
   materials: THREE.MeshStandardMaterial[]
 }
 
-const VIKING_URL = asset("models/kaykit-barbarian.glb")
-const ORC_URL = asset("models/quaternius-orc.glb")
+const BODY_URL = asset("models/quaternius-mannequin.glb")
 
 export function Battle3D({
   battle,
@@ -75,45 +75,56 @@ export function Battle3D({
     renderer.setPixelRatio(Math.min(low ? 1 : 1.5, window.devicePixelRatio || 1))
     renderer.setSize(el.clientWidth, el.clientHeight)
     renderer.outputColorSpace = THREE.SRGBColorSpace
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
-    renderer.setClearColor(0x1a120e)
+    renderer.setClearColor(0x9aa3aa)
     el.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    scene.fog = new THREE.Fog(0x24160f, 8, 18)
-    scene.background = new THREE.Color(0x1c1410)
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.08, 40)
+    scene.fog = new THREE.Fog(0xc5c8c2, 28, 48)
+    scene.background = new THREE.Color(0x9aa3aa)
+    const camera = new THREE.PerspectiveCamera(52, 1, 0.2, 80)
     const fit = () => {
       const aspect = el.clientWidth / Math.max(1, el.clientHeight)
       camera.aspect = aspect
-      camera.fov = aspect < 0.85 ? 40 : 32
+      camera.fov = aspect < 0.85 ? 54 : 42
       camera.updateProjectionMatrix()
     }
     fit()
-    camera.position.set(0.55, 2.35, 4.7)
-    camera.lookAt(0, 0.85, 0)
+    camera.position.set(5.6, 6.4, 7.4)
+    camera.lookAt(0, 0.7, 0)
+    const orbit = new OrbitControls(camera, renderer.domElement)
+    orbit.target.set(0, 0.7, 0)
+    orbit.enablePan = false
+    orbit.enableDamping = true
+    orbit.minDistance = 8
+    orbit.maxDistance = 28
+    orbit.minPolarAngle = 0.55
+    orbit.maxPolarAngle = 1.05
+    orbit.update()
 
-    scene.add(new THREE.HemisphereLight(0xffc48a, 0x2a1810, 0.55))
-    const sun = new THREE.DirectionalLight(0xffe0b0, 1.7)
-    sun.position.set(-4, 8, 5)
+    scene.add(new THREE.HemisphereLight(0xe7eef6, 0x8d8778, 0.72))
+    const sun = new THREE.DirectionalLight(0xfff6ea, 1.2)
+    sun.position.set(-8, 16, 10)
     sun.castShadow = true
     sun.shadow.mapSize.set(1024, 1024)
-    sun.shadow.camera.near = 1
-    sun.shadow.camera.far = 24
-    sun.shadow.camera.left = -8
-    sun.shadow.camera.right = 8
-    sun.shadow.camera.top = 8
-    sun.shadow.camera.bottom = -8
+    sun.shadow.camera.near = 2
+    sun.shadow.camera.far = 40
+    sun.shadow.camera.left = -14
+    sun.shadow.camera.right = 14
+    sun.shadow.camera.top = 14
+    sun.shadow.camera.bottom = -14
     scene.add(sun)
-    const fire = new THREE.PointLight(0xff4a12, 28, 9)
-    fire.position.set(-0.2, 0.6, 1.5)
-    const fire2 = new THREE.PointLight(0xff6a20, 16, 7)
-    fire2.position.set(1.6, 0.5, -1.4)
+    const fire = new THREE.PointLight(0xff7a3a, 2.4, 3.2)
+    fire.position.set(-2.2, 0.45, -4.2)
+    const fire2 = new THREE.PointLight(0xff8a40, 1.6, 2.6)
+    fire2.position.set(2.4, 0.4, 3.2)
     scene.add(fire, fire2)
 
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(14, 10),
+      new THREE.PlaneGeometry(14, 12),
       new THREE.MeshStandardMaterial({ map: boardTexture(), roughness: 0.92, metalness: 0 }),
     )
     ground.rotation.x = -Math.PI / 2
@@ -181,13 +192,12 @@ export function Battle3D({
     }
 
     const loader = new GLTFLoader()
-    const ready = Promise.all([loader.loadAsync(VIKING_URL), loader.loadAsync(ORC_URL)]).then(([viking, orc]) => {
+    const ready = loader.loadAsync(BODY_URL).then((body) => {
       if (!alive) return
       const roster = buildRoster(battle, cap)
       for (const spec of roster) {
-        const rig = spec.faction === "grog" ? orc : viking
-        const root = cloneSkinned(rig.scene) as THREE.Group
-        prepare(root, spec.faction === "grog" ? 1.85 : 1.55, spec.faction === "grog")
+        const root = cloneSkinned(body.scene) as THREE.Group
+        prepare(root, spec.faction === "grog" ? 1.9 : 1.72, spec.faction === "grog", spec.cls)
         const base = new THREE.Mesh(
           new THREE.CylinderGeometry(0.34, 0.38, 0.05, 18),
           new THREE.MeshStandardMaterial({ color: spec.side === "atk" ? 0xc9a15a : 0x6e2e28, metalness: 0.35, roughness: 0.5 }),
@@ -202,7 +212,7 @@ export function Battle3D({
         scene.add(holder)
         const mixer = new THREE.AnimationMixer(root)
         const actions = new Map<string, THREE.AnimationAction>()
-        for (const clip of rig.animations) actions.set(clip.name, mixer.clipAction(clip, root))
+        for (const clip of body.animations) actions.set(clip.name, mixer.clipAction(clip, root))
         const materials: THREE.MeshStandardMaterial[] = []
         root.traverse((obj) => {
           const mesh = obj as THREE.Mesh
@@ -217,7 +227,7 @@ export function Battle3D({
         const fighter: Fighter = {
           ...spec,
           alive: true,
-          state: "run",
+          state: "idle",
           root: holder,
           mixer,
           actions,
@@ -226,7 +236,7 @@ export function Battle3D({
           flash: 0,
           materials,
         }
-        setClip(fighter, "run")
+        setClip(fighter, "idle")
         fighters.push(fighter)
       }
       focus.id = fighters.find((u) => u.side === "def")?.id ?? ""
@@ -249,14 +259,16 @@ export function Battle3D({
       return best
     }
 
-    function loose(from: Fighter, to: Fighter) {
-      const slot = arrowState.find((a) => !a.on)
-      if (!slot) return
-      slot.on = true
-      slot.t = 0
-      slot.from.set(from.x, 1.15, from.z)
-      slot.to.set(to.x, 1.05, to.z)
-      slot.hit = fighters.indexOf(to)
+    function loose(from: Fighter, to: Fighter, count = 1) {
+      for (let n = 0; n < count; n++) {
+        const slot = arrowState.find((a) => !a.on)
+        if (!slot) return
+        slot.on = true
+        slot.t = -n * 0.08
+        slot.from.set(from.x, 1.35, from.z + (n - (count - 1) / 2) * 0.18)
+        slot.to.set(to.x + (n - (count - 1) / 2) * 0.45, 1.05, to.z)
+        slot.hit = fighters.indexOf(to)
+      }
       playSfx("arrow")
     }
 
@@ -291,7 +303,8 @@ export function Battle3D({
 
     api.current = { strike, retreat: finish }
     const clock = new THREE.Clock()
-    let autoT = 0.6
+    let autoT = 1.4
+    let formLeft = 0.7
     let hudTick = 0
     const loop = () => {
       if (!alive) return
@@ -324,18 +337,20 @@ export function Battle3D({
           if (!u.struck && t > 0.42 && (u.state === "attack" || u.state === "shoot")) {
             u.struck = true
             if (u.state === "attack" && foe) hurt(foe, u.cls === "monster" ? 10 : 6)
-            if (u.state === "shoot" && foe) loose(u, foe)
+            if (u.state === "shoot" && foe) loose(u, foe, 4)
           }
           if (t > 0.92) {
             u.struck = false
             u.state = foe && dist < reach + 0.3 ? (ranged ? "shoot" : "attack") : "run"
             setClip(u, u.state)
           }
+        } else if (formLeft > 0) {
+          if (u.state !== "idle") { u.state = "idle"; setClip(u, "idle") }
         } else if (foe && dist < reach) {
           u.state = ranged ? "shoot" : "attack"
           setClip(u, u.state)
         } else if (foe) {
-          const step = 0.55 * dt
+          const step = 2.6 * dt
           u.x += Math.sign(foe.x - u.x) * step
           u.z += Math.sign(foe.z - u.z) * Math.min(step, Math.abs(foe.z - u.z))
           if (u.state !== "run") { u.state = "run"; setClip(u, "run") }
@@ -357,7 +372,12 @@ export function Battle3D({
           arrows.setMatrixAt(i, _m)
           continue
         }
-        a.t += dt * 2.4
+        a.t += dt * 1.6
+        if (a.t < 0) {
+          _m.makeScale(0.0001, 0.0001, 0.0001)
+          arrows.setMatrixAt(i, _m)
+          continue
+        }
         _v.lerpVectors(a.from, a.to, Math.min(1, a.t))
         _m.compose(_v, _q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), a.to.clone().sub(a.from).normalize()), new THREE.Vector3(1, 1, 1))
         arrows.setMatrixAt(i, _m)
@@ -385,11 +405,23 @@ export function Battle3D({
       sparks.instanceMatrix.needsUpdate = true
       if (sparks.instanceColor) sparks.instanceColor.needsUpdate = true
 
+      if (formLeft > 0) formLeft -= real
+      orbit.update()
       if (fighters.length) {
-        camera.position.x = 0.55 + (Math.random() - 0.5) * shake
-        camera.position.y = 2.35 + (Math.random() - 0.5) * shake * 0.3
-        camera.lookAt(0, 0.85, 0)
-        if (auto && !ended) {
+        if (shake > 0) camera.position.x += (Math.random() - 0.5) * shake * 0.15
+        if (formLeft <= 0 && !el.dataset.clash) {
+          const atk = fighters.filter((u) => u.alive && u.side === "atk")
+          const def = fighters.filter((u) => u.alive && u.side === "def")
+          if (atk.length && def.length) {
+            const ax = atk.reduce((sum, u) => sum + u.x, 0) / atk.length
+            const dx = def.reduce((sum, u) => sum + u.x, 0) / def.length
+            if (Math.abs(dx - ax) < 1.8) {
+              el.dataset.clash = "yes"
+              setPhase("Clash")
+            }
+          }
+        }
+        if (auto && !ended && formLeft <= 0) {
           autoT -= real
           if (autoT <= 0) {
             autoT = 1.8
@@ -432,6 +464,7 @@ export function Battle3D({
       alive = false
       window.removeEventListener("resize", onResize)
       renderer.domElement.removeEventListener("pointerdown", onPointer)
+      orbit.dispose()
       renderer.dispose()
       el.removeChild(renderer.domElement)
       delete el.dataset.ready
@@ -499,44 +532,112 @@ function setClip(u: Fighter, pose: Pose) {
   u.playing = name
 }
 
-function clipNames(u: Fighter, pose: Pose): string[] {
-  const grog = u.actions.has("Run")
-  if (pose === "dead") return grog ? ["Death"] : ["Death_A", "Death_B"]
-  if (pose === "hit") return grog ? ["HitReact"] : ["Hit_A", "Hit_B", "Block_Hit"]
-  if (pose === "shoot") return grog ? ["Punch", "Weapon"] : ["1H_Ranged_Shoot", "2H_Ranged_Shoot", "Throw"]
-  if (pose === "attack") return grog ? ["Weapon", "Punch"] : ["1H_Melee_Attack_Chop", "2H_Melee_Attack_Chop"]
-  if (pose === "run") return grog ? ["Run", "Walk"] : ["Running_A", "Walking_A"]
-  return grog ? ["Idle", "Walk"] : ["Idle", "2H_Melee_Idle", "Unarmed_Idle"]
+function clipNames(_u: Fighter, pose: Pose): string[] {
+  if (pose === "dead") return ["Death01"]
+  if (pose === "hit") return ["Hit_Chest", "Hit_Head"]
+  if (pose === "shoot") return ["Spell_Simple_Shoot", "Pistol_Shoot"]
+  if (pose === "attack") return ["Sword_Attack", "Punch_Cross", "Punch_Jab"]
+  if (pose === "run") return ["Jog_Fwd_Loop", "Sprint_Loop", "Walk_Loop"]
+  return ["Idle_Loop", "Sword_Idle"]
 }
 
-function prepare(root: THREE.Group, height: number, grog: boolean) {
+function prepare(root: THREE.Group, height: number, grog: boolean, cls: UnitClass) {
+  const skin = grog ? 0x6f8f3c : 0xd2a07a
+  const joint = grog ? 0x4f6a28 : 0xb88862
   root.traverse((obj) => {
     obj.frustumCulled = false
     const mesh = obj as THREE.Mesh
     if (!mesh.isMesh) return
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => m.clone()) : mesh.material.clone()
+    const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const mat of list) {
+      if (!(mat instanceof THREE.MeshStandardMaterial)) continue
+      const joints = /joint/i.test(mat.name)
+      mat.color.setHex(joints ? joint : skin)
+      mat.roughness = 0.72
+      mat.metalness = 0.02
+      mat.emissive.setHex(0x000000)
+      mat.emissiveIntensity = 0
+    }
   })
+  dressBody(root, grog, cls)
   const box = new THREE.Box3().setFromObject(root)
   const size = box.getSize(new THREE.Vector3())
   const scale = height / Math.max(0.001, size.y)
   root.scale.setScalar(scale)
   const fitted = new THREE.Box3().setFromObject(root)
   root.position.y -= fitted.min.y
-  if (!grog) return
+}
+
+function dressBody(root: THREE.Group, grog: boolean, cls: UnitClass) {
+  const head = findBone(root, "DEF-head")
+  const handL = findBone(root, "DEF-handL")
+  const handR = findBone(root, "DEF-handR")
+  const chest = findBone(root, "DEF-spine003")
+  const leather = new THREE.MeshStandardMaterial({ color: grog ? 0x3a2a22 : 0x6b4228, roughness: 0.84, metalness: 0.05 })
+  const fur = new THREE.MeshStandardMaterial({ color: grog ? 0x2a2118 : 0x8d6a42, roughness: 1, metalness: 0 })
+  const steel = new THREE.MeshStandardMaterial({ color: grog ? 0x6a6560 : 0xb7c0c8, roughness: 0.38, metalness: 0.72 })
+  const wood = new THREE.MeshStandardMaterial({ color: 0x6a452c, roughness: 0.8, metalness: 0 })
+  if (head) {
+    const helm = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), steel)
+    helm.position.set(0, 0.08, 0.02)
+    helm.castShadow = true
+    head.add(helm)
+    if (!grog) {
+      const beard = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.12, 6), fur)
+      beard.position.set(0, -0.02, 0.08)
+      beard.rotation.x = Math.PI
+      head.add(beard)
+    } else {
+      const hornMat = new THREE.MeshStandardMaterial({ color: 0x3a3428, roughness: 0.5, metalness: 0.2 })
+      const left = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.16, 6), hornMat)
+      const right = left.clone()
+      left.position.set(-0.06, 0.12, 0.02)
+      right.position.set(0.06, 0.12, 0.02)
+      left.rotation.z = 0.45
+      right.rotation.z = -0.45
+      const tusk = new THREE.Mesh(new THREE.ConeGeometry(0.015, 0.06, 5), new THREE.MeshStandardMaterial({ color: 0xe6d8b8, roughness: 0.45 }))
+      const tusk2 = tusk.clone()
+      tusk.position.set(-0.03, -0.04, 0.09)
+      tusk2.position.set(0.03, -0.04, 0.09)
+      head.add(left, right, tusk, tusk2)
+    }
+  }
+  if (chest) {
+    const tunic = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.32, 0.16), leather)
+    tunic.position.set(0, -0.05, 0.04)
+    const cloak = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.45, 0.06), fur)
+    cloak.position.set(0, -0.12, -0.1)
+    chest.add(tunic, cloak)
+  }
+  if (handL && cls !== "archer") {
+    const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.04, 16), wood)
+    shield.rotation.x = Math.PI / 2
+    shield.position.set(0, 0.02, 0.08)
+    const boss = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), steel)
+    boss.position.set(0, 0.02, 0.11)
+    handL.add(shield, boss)
+  }
+  if (handL && cls === "archer") {
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.012, 6, 12, Math.PI), wood)
+    bow.position.set(0, 0.05, 0.06)
+    handL.add(bow)
+  }
+  if (handR && cls !== "archer") {
+    const haft = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.018, 0.55, 6), wood)
+    haft.position.set(0, 0.2, 0.04)
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.03), steel)
+    blade.position.set(0.08, 0.42, 0.04)
+    handR.add(haft, blade)
+  }
+}
+
+function findBone(root: THREE.Object3D, name: string): THREE.Bone | null {
+  let found: THREE.Object3D | null = null
   root.traverse((obj) => {
-    if (!(obj instanceof THREE.Bone)) return
-    if (!/head/i.test(obj.name)) return
-    const hornMat = new THREE.MeshStandardMaterial({ color: 0x3a3228, roughness: 0.55, metalness: 0.25 })
-    const left = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.28, 6), hornMat)
-    const right = left.clone()
-    left.position.set(-0.12, 0.16, 0.02)
-    right.position.set(0.12, 0.16, 0.02)
-    left.rotation.z = 0.5
-    right.rotation.z = -0.5
-    left.castShadow = true
-    right.castShadow = true
-    obj.add(left, right)
+    if (obj.name === name && (obj as THREE.Bone).isBone) found = obj
   })
+  return found as THREE.Bone | null
 }
 
 function buildRoster(battle: BattleResult, cap: number) {
@@ -559,8 +660,8 @@ function expand(battle: BattleResult, side: "atk" | "def", faction: Faction, cap
       faction,
       hero,
       hp: hero ? 36 : cls === "monster" ? 30 : 16,
-      x: (side === "atk" ? -1.45 : 1.45) - dir * row * 0.7,
-      z: (col - 1) * 0.78,
+      x: (side === "atk" ? -2.15 : 2.15) - dir * row * 0.9,
+      z: (col - 1) * 1.15,
     })
   }
   champs.slice(0, 2).forEach((c, i) => {
@@ -608,7 +709,7 @@ function dressBoard(scene: THREE.Scene, grogCamp: boolean) {
   const stone = new THREE.MeshStandardMaterial({ color: 0x6e6860, roughness: 0.85 })
   const thatch = new THREE.MeshStandardMaterial({ color: grogCamp ? 0x3a2a18 : 0x6a4a28, roughness: 1 })
   const hall = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 1), wood)
-  hall.position.set(grogCamp ? 3.2 : -3.3, 0.4, -2.2)
+  hall.position.set(grogCamp ? 3.4 : -3.6, 0.4, -3.4)
   hall.castShadow = true
   const roof = new THREE.Mesh(new THREE.ConeGeometry(1.15, 0.55, 4), thatch)
   roof.position.set(hall.position.x, 0.95, hall.position.z)

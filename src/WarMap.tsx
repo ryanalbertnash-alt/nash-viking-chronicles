@@ -150,12 +150,12 @@ export function WarMap({
           root.replaceWith(node)
           existing.remove()
           const marker = new maplibregl.Marker({ element: node, anchor }).setLngLat([lng, lat]).addTo(map)
-          if (id === "me" || id.startsWith("ride:") || id.startsWith("march:")) node.style.zIndex = "5"
+          if (id === "me" || id.startsWith("ride:") || id.startsWith("march:")) node.style.zIndex = "1"
           marks.current.set(id, marker)
         }
         return
       }
-      if (id === "me" || id.startsWith("ride:") || id.startsWith("march:")) node.style.zIndex = "5"
+      if (id === "me" || id.startsWith("ride:") || id.startsWith("march:")) node.style.zIndex = "1"
       marks.current.set(id, new maplibregl.Marker({ element: node, anchor }).setLngLat([lng, lat]).addTo(map))
     }
 

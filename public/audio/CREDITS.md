@@ -27,12 +27,9 @@ Each of the 24 champions has five lines: recruit, battle cry, victory, defeat, a
 
 ## Battle figures
 
-The fighters are rigged CC0 character models, loaded as glTF and played with skeletal clips (idle, run, attack, shoot, hit, death).
+The fighters are the Quaternius Universal Animation Library mannequin, CC0, adult proportions, with the library's skeletal clips (idle, jog, sword attack, spell shoot, hit, death). Helmets, fur, shields, axes, and Grog horns are simple pieces parented to that rig. https://quaternius.com and https://github.com/J-Ponzo/gltf-universal-animation-library
 
-- Vikings: KayKit Character Pack: Adventurers, Barbarian, by Kay Lousberg. CC0. The model includes the beard, axe, and round shield. https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0
-- Grogs: Quaternius Orc, CC0, from the Ultimate Monsters pack. https://quaternius.com and https://poly.pizza/m/5vO2YJsPEf
-
-Champion portraits stay in the battle header. They are not stuck on the figures. The board, fire, and the longhouse or camp are original.
+Champion portraits stay in the battle header. The board, fire, and the longhouse or camp are original.
 
 ## Sound effects
 
